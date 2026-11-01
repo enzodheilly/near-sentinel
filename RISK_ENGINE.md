@@ -25,8 +25,8 @@ All are pure functions of a candle array. Warm-up: a bar `t` (0-based index in t
 
 | Name | Definition | Default |
 |---|---|---|
-| `RSI(n)` | Wilder's RSI on closes | `n = 14` |
-| `ATR(n)` | Wilder's average true range | `n = 14` |
+| `RSI(n)` | Wilder's RSI on closes. Seeded with the simple average of the first `n` gains and losses (changes 1…n), so the first value is at index `n`; then Wilder smoothing `avg = (avg × (n − 1) + x) / n`. No movement at all gives 50; no loss gives 100. | `n = 14` |
+| `ATR(n)` | Wilder's average true range. True range needs the previous close, so it exists from index 1. Seeded with the simple average of true ranges 1…n (first value at index `n`), then Wilder smoothing. | `n = 14` |
 | `BB(n, k)` | SMA(n) of close ± k × population std-dev of close | `n = 20, k = 2` |
 | `BBW` | (upper − lower) / middle | — |
 | `EMA(n)` | Exponential moving average of close, seeded with SMA(n) | `n = 50` (4h) |
