@@ -39,7 +39,14 @@ for (const l of labels) {
 // --- milestones ---
 const msByTitle = new Map(listAll(`${REPO}/milestones?state=all&per_page=100`).map((m) => [m.title, m]));
 for (const m of milestones) {
-  if (msByTitle.has(m.title)) continue;
+  const existing = msByTitle.get(m.title);
+  if (existing) {
+    if (existing.description !== m.description) {
+      ghJson("PATCH", `${REPO}/milestones/${existing.number}`, { description: m.description });
+      console.log(`sprint ~ ${m.title}`);
+    }
+    continue;
+  }
   const created = ghJson("POST", `${REPO}/milestones`, { title: m.title, description: m.description, due_on: `${m.due}T22:59:00Z` });
   msByTitle.set(m.title, created);
   console.log(`sprint + ${m.title}`);
