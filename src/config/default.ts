@@ -16,10 +16,11 @@ function deepFreeze<T>(value: T): T {
 export const defaultRiskConfig: RiskConfig = deepFreeze(
   parseRiskConfig({
     assets: {
+      // Asset ids and decimals as listed by 1Click /v0/tokens (P1, 19 Oct 2026).
       // P1: nBTC quoted within 0.10% of the reference price; wBTC rejected (1.20%).
       BTC: { assetId: "nep141:nbtc.bridge.near", decimals: 8, marketSymbol: "BTCUSDT" },
       NEAR: { assetId: "nep141:wrap.near", decimals: 24, marketSymbol: "NEARUSDT" },
-      // Native USDC on NEAR.
+      // Native USDC on NEAR (Circle).
       USDC: { assetId: "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1", decimals: 6 },
     },
     timeframes: { exec: "1h", regime: "4h" },

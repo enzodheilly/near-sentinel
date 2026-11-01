@@ -1,0 +1,69 @@
+{
+  "name": "demo-entry",
+  "asset": "NEAR",
+  "breakoutBar": "2026-07-20T09:00Z",
+  "kind": "ENTRY",
+  "reason": "OK",
+  "window": {
+    "from": "2026-07-12T01:00Z",
+    "to": "2026-07-24T13:00Z"
+  },
+  "files": {
+    "BTCUSDT_1h": {
+      "candles": 301,
+      "from": "2026-07-12T01:00Z",
+      "to": "2026-07-24T13:00Z",
+      "sha256": "e797d375bcf9778b4c32262f102af70067c1552523c8d4ea86db1fcd09610eb7"
+    },
+    "BTCUSDT_4h": {
+      "candles": 185,
+      "from": "2026-06-23T20:00Z",
+      "to": "2026-07-24T12:00Z",
+      "sha256": "bdb60e068eac0ca988511285a86ca981d2d1fc70320cbb0d914fb1ea2250a73c"
+    },
+    "NEARUSDT_1h": {
+      "candles": 301,
+      "from": "2026-07-12T01:00Z",
+      "to": "2026-07-24T13:00Z",
+      "sha256": "b509ec5eef795d449357e7302bf6172c1e76b1f06efcfda46433bbc3e73f1e86"
+    },
+    "NEARUSDT_4h": {
+      "candles": 185,
+      "from": "2026-06-23T20:00Z",
+      "to": "2026-07-24T12:00Z",
+      "sha256": "9decfc96c2fc328fd9220aa1403aecf16c598fbdf19d143a9165e8d21bcb5d5b"
+    }
+  },
+  "event": {
+    "t": 2649,
+    "barTime": "2026-07-20T09:00Z",
+    "close": 1.936,
+    "rsi": 58.10085401846159,
+    "strength": 0.07106544150791813,
+    "confirmations": [
+      "RSI_MOMENTUM",
+      "FVG_SUPPORT",
+      "BTC_REGIME"
+    ],
+    "vetoes": [],
+    "fvg": {
+      "top": 1.918,
+      "bottom": 1.912,
+      "ageBars": 1
+    },
+    "regime": "bullish",
+    "corr": 0.665268018623373,
+    "kind": "ENTRY",
+    "reason": "OK",
+    "stop": 1.9103765930298526,
+    "sim": {
+      "tp1": true,
+      "exit": "TP2",
+      "exitBar": 2666,
+      "barsHeld": 17,
+      "resultR": 2.25
+    },
+    "fwd24Pct": 3.564049586776857,
+    "score": 9.321065441507917
+  }
+}

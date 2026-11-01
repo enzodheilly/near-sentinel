@@ -1,0 +1,54 @@
+{
+  "name": "demo-refusal",
+  "asset": "NEAR",
+  "breakoutBar": "2026-09-20T16:00Z",
+  "kind": "REFUSAL",
+  "reason": "RSI_EXHAUSTION",
+  "window": {
+    "from": "2026-09-12T08:00Z",
+    "to": "2026-09-24T20:00Z"
+  },
+  "files": {
+    "BTCUSDT_1h": {
+      "candles": 301,
+      "from": "2026-09-12T08:00Z",
+      "to": "2026-09-24T20:00Z",
+      "sha256": "d78b885e2cfea2019a637145dcb4f5d6e5d307c9b96098ac5221247b7f780637"
+    },
+    "BTCUSDT_4h": {
+      "candles": 186,
+      "from": "2026-08-25T00:00Z",
+      "to": "2026-09-24T20:00Z",
+      "sha256": "0ace1c444ab62985eefdda98f587b71449a56bd09ecc5e02148e5f301123122c"
+    },
+    "NEARUSDT_1h": {
+      "candles": 301,
+      "from": "2026-09-12T08:00Z",
+      "to": "2026-09-24T20:00Z",
+      "sha256": "ea900cb6ccff420612cab1f0c96954dab6af3cfc1cacb05decf238bd35254221"
+    },
+    "NEARUSDT_4h": {
+      "candles": 186,
+      "from": "2026-08-25T00:00Z",
+      "to": "2026-09-24T20:00Z",
+      "sha256": "08983aabe2c9075a1006b5a2d1b78bc8fb01b7037819da6bada9e113a541d5ee"
+    }
+  },
+  "event": {
+    "t": 4144,
+    "barTime": "2026-09-20T16:00Z",
+    "close": 4.249,
+    "rsi": 82.45445552062321,
+    "strength": 1,
+    "confirmations": [],
+    "vetoes": [
+      "RSI_EXHAUSTION"
+    ],
+    "regime": "bullish",
+    "corr": 0.30072572550424853,
+    "kind": "REFUSAL",
+    "reason": "RSI_EXHAUSTION",
+    "fwd24Pct": -4.730524829371608,
+    "score": 6.3652624146858034
+  }
+}

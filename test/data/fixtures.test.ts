@@ -1,14 +1,15 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FixtureError, loadFixtureSet, parseFixtureFile, windowRef } from "../../src/data/fixtures.ts";
+import { FixtureError, loadFixtureSet, windowRef } from "../../src/data/fixtures.ts";
 import type { Candle } from "../../src/types.ts";
 
 const H = 3_600_000;
 const T0 = Date.parse("2026-07-01T00:00:00Z");
+const iso = (t: number) => new Date(t).toISOString();
+const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
 function candles(n: number, step = H, start = T0): Candle[] {
   return Array.from({ length: n }, (_, i) => {
@@ -17,89 +18,103 @@ function candles(n: number, step = H, start = T0): Candle[] {
   });
 }
 
-/** Builds fixture file text exactly as the freezing tool does: sha256 of JSON.stringify(candles). */
-function fixtureText(symbol: string, interval: "1h" | "4h", cs: Candle[], extra: Record<string, unknown> = {}): string {
-  const sha256 = createHash("sha256").update(JSON.stringify(cs)).digest("hex");
-  return JSON.stringify({ meta: { purpose: "test", symbol, interval, count: cs.length, sha256, ...extra }, candles: cs });
+/** Writes a fixture set in the frozen layout: bare candle arrays plus a manifest hashing their bytes. */
+async function writeSet(dir: string, opts: { manifest?: Record<string, unknown>; series?: Record<string, Candle[]> } = {}) {
+  const series = opts.series ?? { NEARUSDT_1h: candles(10), BTCUSDT_4h: candles(4, 4 * H) };
+  const files: Record<string, unknown> = {};
+  for (const [key, cs] of Object.entries(series)) {
+    const text = JSON.stringify(cs);
+    await writeFile(join(dir, `${key}.json`), text);
+    files[key] = { candles: cs.length, from: iso(cs[0]!.openTime), to: iso(cs.at(-1)!.openTime), sha256: sha(text) };
+  }
+  const manifest = {
+    name: "demo-entry", asset: "NEAR", breakoutBar: iso(T0 + 5 * H), kind: "ENTRY", reason: "OK", files,
+    event: { confirmations: ["RSI_MOMENTUM", "FVG_SUPPORT"], vetoes: [], sim: { resultR: 2 } },
+    ...opts.manifest,
+  };
+  await writeFile(join(dir, "manifest.json"), JSON.stringify(manifest));
+  return manifest;
 }
-
-describe("parseFixtureFile", () => {
-  it("accepts a well-formed file and keeps extra provenance fields", () => {
-    const s = parseFixtureFile("NEARUSDT_1h.json", fixtureText("NEARUSDT", "1h", candles(5), { source: "binance" }));
-    expect(s.candles).toHaveLength(5);
-    expect(s.meta["source"]).toBe("binance");
-  });
-
-  it("rejects a tampered candle (hash mismatch)", () => {
-    const cs = candles(5);
-    const text = fixtureText("NEARUSDT", "1h", cs);
-    const tampered = text.replace(`"close":${cs[2]!.close}`, `"close":${cs[2]!.close + 0.001}`);
-    expect(tampered).not.toBe(text);
-    expect(() => parseFixtureFile("NEARUSDT_1h.json", tampered)).toThrow(/sha256 mismatch/);
-  });
-
-  it("rejects a gap in the series", () => {
-    const cs = candles(6);
-    cs.splice(3, 1);
-    expect(() => parseFixtureFile("NEARUSDT_1h.json", fixtureText("NEARUSDT", "1h", cs))).toThrow(/gap of 1 candle/);
-  });
-
-  it("rejects unsorted or duplicate candles", () => {
-    const cs = candles(4);
-    cs[2] = { ...cs[1]! };
-    expect(() => parseFixtureFile("NEARUSDT_1h.json", fixtureText("NEARUSDT", "1h", cs))).toThrow(/not after/);
-  });
-
-  it("rejects inconsistent OHLC", () => {
-    const cs = candles(3);
-    cs[1] = { ...cs[1]!, high: cs[1]!.low - 0.1 };
-    expect(() => parseFixtureFile("NEARUSDT_1h.json", fixtureText("NEARUSDT", "1h", cs))).toThrow(/inconsistent OHLC/);
-  });
-
-  it("rejects a count, symbol or interval that does not match", () => {
-    const cs = candles(3);
-    const sha256 = createHash("sha256").update(JSON.stringify(cs)).digest("hex");
-    const bad = (meta: object) => JSON.stringify({ meta: { symbol: "NEARUSDT", interval: "1h", count: 3, sha256, ...meta }, candles: cs });
-    expect(() => parseFixtureFile("NEARUSDT_1h.json", bad({ count: 4 }))).toThrow(/meta.count/);
-    expect(() => parseFixtureFile("NEARUSDT_1h.json", bad({ symbol: "BTCUSDT" }))).toThrow(/meta.symbol/);
-    expect(() => parseFixtureFile("NEARUSDT_1h.json", bad({ interval: "4h" }))).toThrow(/meta.interval/);
-  });
-
-  it("rejects bad file names and invalid JSON with a FixtureError", () => {
-    expect(() => parseFixtureFile("near.json", "{}")).toThrow(FixtureError);
-    expect(() => parseFixtureFile("NEARUSDT_1h.json", "{not json")).toThrow(/invalid JSON/);
-  });
-});
 
 describe("loadFixtureSet", () => {
   let dir: string;
   beforeEach(async () => {
-    dir = join(await mkdtemp(join(tmpdir(), "sentinel-fx-")), "demo-entry");
-    await mkdir(dir);
+    dir = await mkdtemp(join(tmpdir(), "sentinel-fx-"));
   });
   afterEach(async () => rm(dir, { recursive: true, force: true }));
 
-  it("loads every series and the shared expectation", async () => {
-    const bar = new Date(T0 + 3 * H).toISOString();
-    const expected = { decision: "ENTRY", reason: null, confirmations: ["RSI_MOMENTUM", "FVG_SUPPORT"], vetoes: [] };
-    await writeFile(join(dir, "NEARUSDT_1h.json"), fixtureText("NEARUSDT", "1h", candles(5), { signalBar: bar, expected }));
-    await writeFile(join(dir, "BTCUSDT_4h.json"), fixtureText("BTCUSDT", "4h", candles(3, 4 * H), { signalBar: bar, expected }));
+  it("loads a valid set and maps the expectation", async () => {
+    await writeSet(dir);
     const set = await loadFixtureSet(dir);
-    expect(set.name).toBe("demo-entry");
-    expect(set.series["NEARUSDT"]?.["1h"]?.candles).toHaveLength(5);
-    expect(set.series["BTCUSDT"]?.["4h"]?.candles).toHaveLength(3);
-    expect(set.signalBarTime).toBe(T0 + 3 * H);
-    expect(set.expected?.decision).toBe("ENTRY");
+    expect(set.series["NEARUSDT"]?.["1h"]?.candles).toHaveLength(10);
+    expect(set.series["BTCUSDT"]?.["4h"]?.candles).toHaveLength(4);
+    expect(set.signalBarTime).toBe(T0 + 5 * H);
+    expect(set.expected).toEqual({ decision: "ENTRY", confirmations: ["RSI_MOMENTUM", "FVG_SUPPORT"], vetoes: [] });
+    expect(set.manifest.event["sim"]).toEqual({ resultR: 2 }); // provenance is kept
   });
 
-  it("rejects files that disagree on the signal bar", async () => {
-    await writeFile(join(dir, "NEARUSDT_1h.json"), fixtureText("NEARUSDT", "1h", candles(5), { signalBar: "2026-07-01T03:00:00.000Z" }));
-    await writeFile(join(dir, "BTCUSDT_1h.json"), fixtureText("BTCUSDT", "1h", candles(5), { signalBar: "2026-07-01T04:00:00.000Z" }));
-    await expect(loadFixtureSet(dir)).rejects.toThrow(/disagree on signalBar/);
+  it("maps a refusal reason to the engine's RejectReason", async () => {
+    await writeSet(dir, { manifest: { kind: "REFUSAL", reason: "RSI_EXHAUSTION", event: { confirmations: [], vetoes: ["RSI_EXHAUSTION"] } } });
+    expect((await loadFixtureSet(dir)).expected).toMatchObject({ decision: "REJECT", reason: "VETO_RSI_EXHAUSTION", vetoes: ["RSI_EXHAUSTION"] });
   });
 
-  it("rejects an empty directory", async () => {
-    await expect(loadFixtureSet(dir)).rejects.toThrow(/no fixture files/);
+  it("rejects a file whose bytes changed (even a whitespace change)", async () => {
+    await writeSet(dir);
+    const cs = candles(10);
+    await writeFile(join(dir, "NEARUSDT_1h.json"), JSON.stringify(cs, null, 1));
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/sha256 mismatch/);
+  });
+
+  it("rejects a tampered candle", async () => {
+    await writeSet(dir);
+    const cs = candles(10);
+    cs[3] = { ...cs[3]!, close: cs[3]!.close + 0.001 };
+    await writeFile(join(dir, "NEARUSDT_1h.json"), JSON.stringify(cs));
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/sha256 mismatch/);
+  });
+
+  it("rejects a gap, even when the hash matches", async () => {
+    const cs = candles(10);
+    cs.splice(4, 1);
+    await writeSet(dir, { series: { NEARUSDT_1h: cs }, manifest: { breakoutBar: iso(T0 + 2 * H) } });
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/gap of 1 candle/);
+  });
+
+  it("rejects inconsistent OHLC", async () => {
+    const cs = candles(10);
+    cs[2] = { ...cs[2]!, high: cs[2]!.low - 0.1 };
+    await writeSet(dir, { series: { NEARUSDT_1h: cs } });
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/inconsistent OHLC/);
+  });
+
+  it("rejects a count or range that does not match the manifest", async () => {
+    const m = await writeSet(dir);
+    const files = m.files as Record<string, { candles: number; to: string }>;
+    await writeFile(join(dir, "manifest.json"), JSON.stringify({ ...m, files: { ...files, NEARUSDT_1h: { ...files["NEARUSDT_1h"]!, candles: 11 } } }));
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/announces 11 candles/);
+    await writeFile(join(dir, "manifest.json"), JSON.stringify({ ...m, files: { ...files, NEARUSDT_1h: { ...files["NEARUSDT_1h"]!, to: iso(T0) } } }));
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/last candle/);
+  });
+
+  it("rejects a missing file and an unlisted file", async () => {
+    await writeSet(dir);
+    await writeFile(join(dir, "ETHUSDT_1h.json"), "[]");
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/not listed in the manifest: ETHUSDT_1h.json/);
+    await rm(join(dir, "ETHUSDT_1h.json"));
+    await rm(join(dir, "BTCUSDT_4h.json"));
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/missing/);
+  });
+
+  it("rejects a signal bar outside the asset's 1h series", async () => {
+    await writeSet(dir, { manifest: { breakoutBar: iso(T0 + 50 * H) } });
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/signal bar .* is not in NEARUSDT 1h/);
+  });
+
+  it("rejects an unknown refusal reason or signal name", async () => {
+    await writeSet(dir, { manifest: { kind: "REFUSAL", reason: "BAD_VIBES" } });
+    await expect(loadFixtureSet(dir)).rejects.toThrow(/unknown refusal reason/);
+    await writeSet(dir, { manifest: { event: { confirmations: ["MOON"], vetoes: [] } } });
+    await expect(loadFixtureSet(dir)).rejects.toThrow(FixtureError);
   });
 });
 
@@ -112,20 +127,27 @@ describe("windowRef", () => {
   });
 });
 
-// The real demo fixtures, once committed (TASK_LIST T0.6).
-const REAL = [
-  { name: "demo-entry", oneHour: 301, fourHour: 185, decision: "ENTRY" },
-  { name: "demo-refusal", oneHour: 301, fourHour: 186, decision: "REJECT" },
-] as const;
-
-describe.each(REAL)("committed fixture $name", ({ name, oneHour, fourHour, decision }) => {
+// The committed demo fixtures (frozen on 19 Oct 2026, see fixtures/README.md).
+describe.each([
+  { name: "demo-entry", bar: "2026-07-20T09:00:00.000Z", fourHour: 185, decision: "ENTRY", reason: undefined },
+  { name: "demo-refusal", bar: "2026-09-20T16:00:00.000Z", fourHour: 186, decision: "REJECT", reason: "VETO_RSI_EXHAUSTION" },
+] as const)("committed fixture $name", ({ name, bar, fourHour, decision, reason }) => {
   const dir = new URL(`../../fixtures/${name}/`, import.meta.url).pathname;
-  it.skipIf(!existsSync(dir))("loads, verifies and matches the frozen counts", async () => {
+
+  it("loads and verifies every file against its manifest", async () => {
     const set = await loadFixtureSet(dir);
     for (const sym of ["NEARUSDT", "BTCUSDT"]) {
-      expect(set.series[sym]?.["1h"]?.candles).toHaveLength(oneHour);
+      expect(set.series[sym]?.["1h"]?.candles).toHaveLength(301);
       expect(set.series[sym]?.["4h"]?.candles).toHaveLength(fourHour);
     }
-    expect(set.expected?.decision).toBe(decision);
+    expect(iso(set.signalBarTime)).toBe(bar);
+    expect(set.expected.decision).toBe(decision);
+    expect(set.expected.reason).toBe(reason);
+  });
+
+  it("puts the signal bar exactly at index 200, the warm-up boundary (RISK_ENGINE.md §2)", async () => {
+    const set = await loadFixtureSet(dir);
+    const near1h = set.series["NEARUSDT"]?.["1h"]?.candles ?? [];
+    expect(near1h.findIndex((c) => c.openTime === set.signalBarTime)).toBe(200);
   });
 });

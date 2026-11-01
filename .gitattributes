@@ -1,0 +1,2 @@
+# Frozen fixtures are verified byte for byte (sha256 in each manifest): never let git rewrite them.
+fixtures/** -text
