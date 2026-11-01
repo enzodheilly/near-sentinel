@@ -77,6 +77,8 @@ For **NEAR** entries, the regime matters only when the assets move together:
 | `≥ 0.6` | counts as a confirmation | **veto** |
 | `< 0.6` | ignored | ignored |
 
+An undefined correlation (a series with zero variance over the window) counts as `< 0.6`.
+
 For **BTC** entries, a bearish regime is always a veto.
 
 ## 4. Entry convergence
