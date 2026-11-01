@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "near-ai-cloud": {
+      "source": "near/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/near-ai-cloud/SKILL.md",
+      "computedHash": "09a07e45ca82dbaa25327a5c17e6411dc3cb22c02fc6f3340bdf17905f21f8db"
+    },
+    "near-api-js": {
+      "source": "near/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/near-api-js/SKILL.md",
+      "computedHash": "a8eb39a034335345df8c3c9972eee611c76f19d5de734eda2a7eeedc028ea627"
+    },
+    "near-intents": {
+      "source": "near/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/near-intents/SKILL.md",
+      "computedHash": "0f763c182b01e69695f730f359f6ebbbbb732c1ce23f4d71d7a0202060fed18f"
+    }
+  }
+}
