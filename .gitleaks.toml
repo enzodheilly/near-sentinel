@@ -1,0 +1,8 @@
+# gitleaks configuration: default rules, plus one narrow allowlist.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders such as YOUR_API_KEY (vendored NEAR skills, .env.example)"
+regexTarget = "match"
+regexes = ['''YOUR_[A-Z0-9_]*(KEY|TOKEN|SECRET)''']
