@@ -58,9 +58,9 @@ A bullish fair value gap is a three-bar pattern `(i-2, i-1, i)` where `low[i] > 
 
 The signal fires if there is a gap that is:
 
-- **recent**: formed within the last 24 bars;
+- **recent**: formed within the last 24 bars, i.e. its last bar `i` satisfies `t − 23 ≤ i ≤ t` (age `t − i` from 0 to 23);
 - **meaningful**: `low[i] − high[i-2] ≥ 0.25 × ATR[i]`;
-- **unfilled**: no close since bar `i` has fallen below `high[i-2]`;
+- **unfilled**: no close of bars `i+1 … t` has fallen below `high[i-2]`;
 - **near**: its top `low[i]` lies between `close[t] − 1.5 × ATR[t]` and `close[t]`.
 
 The most recent qualifying gap is used. Its bottom `high[i-2]` is reported as `evidence.fvgBottom` and is used for the stop (§5.2).
