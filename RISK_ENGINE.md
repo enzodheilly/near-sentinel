@@ -34,7 +34,7 @@ All are pure functions of a candle array. Warm-up: a bar `t` (0-based index in t
 
 ## 3. Signals
 
-Each signal is evaluated on the last closed 1h bar `t`.
+Each signal is evaluated on the last closed 1h bar `t`. Only `BB_BREAKOUT` has a graded strength; confirmations and vetoes carry strength `1`, and every signal records the raw numbers behind it as `evidence`.
 
 ### 3.1 `BB_BREAKOUT` (trigger, required for entry)
 
