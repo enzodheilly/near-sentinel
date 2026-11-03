@@ -70,6 +70,8 @@ The most recent qualifying gap is used. Its bottom `high[i-2]` is reported as `e
 - `bullish` if BTC 4h close > EMA(50) on 4h.
 - `bearish` otherwise.
 
+The 4h candle used is the last one **closed by the end of bar `t`** (`openTime + 4h ≤ openTime[t] + 1h`); a 4h candle still open is never read. `corr(48)` pairs the 1h log returns of bars `t − 47 … t` with the BTC bars of the same `openTime`; a missing BTC bar makes it undefined.
+
 For **NEAR** entries, the regime matters only when the assets move together:
 
 | `corr(48)` | BTC regime bullish | BTC regime bearish |
@@ -79,7 +81,7 @@ For **NEAR** entries, the regime matters only when the assets move together:
 
 An undefined correlation (a series with zero variance over the window) counts as `< 0.6`.
 
-For **BTC** entries, a bearish regime is always a veto.
+For **BTC** entries, the correlation is 1 by definition, so the first row applies: a bullish regime is a confirmation and a bearish regime is always a veto.
 
 ## 4. Entry convergence
 
