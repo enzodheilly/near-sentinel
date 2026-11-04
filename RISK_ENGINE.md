@@ -94,6 +94,8 @@ An entry proposal is created for an asset only if **all** of the following hold:
 
 If the breakout fires without enough confirmations, the record outcome is `REJECT` with reason `INSUFFICIENT_CONFLUENCE`. That rejection is logged like any other decision.
 
+Without a breakout there is nothing to decide: the outcome is `HOLD` (`NO_SIGNAL`). Otherwise every condition is evaluated and recorded as a check, and when several fail the reason is the first one in this order: `POSITION_OPEN`, `COOLDOWN`, `VETO_RSI_EXHAUSTION`, `VETO_BTC_REGIME`, `INSUFFICIENT_CONFLUENCE`. A cooldown blocks bars opened before `cooldownUntil`, not the bar at `cooldownUntil` itself.
+
 ## 5. Position sizing and exits
 
 ### 5.1 Entry price reference
