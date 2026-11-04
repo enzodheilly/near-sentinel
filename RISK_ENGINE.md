@@ -115,6 +115,8 @@ So the stop sits just under the gap when a gap supports the trade, otherwise at 
 - distance `P_ref − stop` must be **≥ 0.5 × ATR** (not so tight that noise stops it out). If it is tighter, the stop is **moved down** to `P_ref − 0.5 × ATR` (no rejection);
 - distance must be **≤ 3 × ATR** (otherwise reject with `STOP_TOO_WIDE`).
 
+With the defaults, `max(stop_atr, stop_fvg)` never puts the stop further than 1.5 ATR, so `STOP_TOO_WIDE` only fires with a configuration where `stopAtrMult > maxStopAtr`. The check stays as a guard against such a configuration.
+
 ### 5.3 Size
 
 ```
@@ -134,7 +136,9 @@ Then capped, in this order (each cap can only reduce):
 | On-chain per-trade cap (Tier 2) | contract `max_amount_per_trade` |
 | LLM multiplier | × 1, × 0.5 or × 0 (§8) |
 
-If the final notional is below **$10**, reject with `BELOW_MIN_NOTIONAL`. Once caps apply, the real risk can be lower than 1% of equity. It is never higher.
+The fee buffer is the fee rate that applies (§5.5: 0.20% with a partner JWT, 0.45% without): the USDC cap is `free USDC × (1 − fee)`. Exposure counts open positions at their last close; a cap that is already exceeded counts as zero, never as a negative size.
+
+If the final notional is below **$10**, reject with `BELOW_MIN_NOTIONAL`. An LLM `reject` (× 0) is reported as `LLM_VETO` (§8), not as a size problem. Once caps apply, the real risk can be lower than 1% of equity. It is never higher.
 
 ### 5.4 Take-profit and trailing
 
