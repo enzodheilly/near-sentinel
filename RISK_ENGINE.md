@@ -148,6 +148,14 @@ If the final notional is below **$10**, reject with `BELOW_MIN_NOTIONAL`. An LLM
 | TP2 / trailing | On the remaining 50%: chandelier stop `highest_close_since_entry − 2 × ATR`, ratcheted upward only. Hard target at `P_fill + 3 R_dist`. |
 | Time stop | If neither TP1 nor the stop is hit within 48 bars, close everything at market. |
 
+On each closed 1h bar the order is fixed and conservative, since the order of prices inside a bar is unknown:
+
+1. `low ≤ stop` → `STOP` on everything, at `min(stop, open)` (a gap down fills at the open). Checked first, so a bar touching both the stop and TP1 counts as a stop.
+2. TP1 not yet hit and `high ≥ TP1` → `TAKE_PROFIT_1`, at `max(TP1, open)`; the stop is raised to breakeven.
+3. TP1 hit and `high ≥ TP2` → `TAKE_PROFIT_2` on the rest (TP1 and TP2 can both fill on one bar).
+4. The close updates `highest_close_since_entry`; once TP1 is hit (from its own bar on), the chandelier stop raises the stop if it is higher. A stop raised on a bar applies from the next bar.
+5. TP1 not hit and 48 bars held → `TIME_STOP` at the close. After TP1 there is no time stop: the trailing stop manages the rest.
+
 ### 5.5 Reward-to-cost filter
 
 Before entry, the engine estimates the round-trip cost:
