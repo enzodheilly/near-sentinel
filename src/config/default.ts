@@ -46,7 +46,7 @@ export const defaultRiskConfig: RiskConfig = deepFreeze(
       maxStopAtr: 3,
     },
     exits: { tp1R: 1.5, tp1Fraction: 0.5, trailAtr: 2, tp2R: 3, timeStopBars: 48 },
-    costs: { feePctAuthenticated: 0.2, feePctUnauthenticated: 0.45, maxCostFractionOfR: 0.25 },
+    costs: { feePctAuthenticated: 0.2, feePctUnauthenticated: 0.45, maxCostFractionOfTarget: 0.25 },
     limits: { dailyLossPct: 3, maxDrawdownPct: 10, maxEntriesPerDay: 6, cooldownBars: 3, staleBars: 1.5 },
     execution: {
       slippageBps: { entry: 50, exit: 150, exitRetry: 250 },

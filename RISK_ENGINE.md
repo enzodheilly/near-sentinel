@@ -161,7 +161,9 @@ cost_px   = cost_frac × P_ref                                           (cost i
 - `entry_slippage_frac` = measured on the live quote (§7.2).
 - `exit_slippage_frac` = assumed equal to entry.
 
-Reject with `COST_TOO_HIGH` if `cost_px > 0.25 × R_dist`. In plain terms, costs may eat at most a quarter of the risk unit, otherwise the trade cannot be worth taking. The config stores percentages (`0.20`, `0.45`); the engine divides by 100.
+Reject with `COST_TOO_HIGH` if `cost_px > 0.25 × (1.5 × R_dist)`, i.e. a quarter of the distance to TP1 (`maxCostFractionOfTarget × tp1R × R_dist`). In plain terms, costs may eat at most a quarter of the first target, otherwise the trade cannot be worth taking.
+
+*Why the target and not `R_dist`:* a breakout follows a squeeze, so ATR, and with it `R_dist`, is at its smallest exactly when the rule runs. On the frozen data, round-trip fees alone (0.40%) are a median 0.26 R on NEAR 1h and 0.5 R on BTC 1h; a limit of `0.25 × R_dist` would refuse half of NEAR's bars and nearly every BTC bar, including the demo entry (0.30 R). Measured against TP1 (0.375 R), NEAR trades when the fees leave room and BTC 1h is almost always refused, which is the intended behaviour: the agent does not trade where costs eat the edge. Equality passes; a favourable quote (negative slippage) counts as zero. The config stores percentages (`0.20`, `0.45`); the engine divides by 100.
 
 ### 5.6 How stops are executed
 
@@ -278,7 +280,7 @@ export const defaultRiskConfig = {
     stopAtrMult: 1.5, stopFvgBufferAtr: 0.1, minStopAtr: 0.5, maxStopAtr: 3,
   },
   exits: { tp1R: 1.5, tp1Fraction: 0.5, trailAtr: 2, tp2R: 3, timeStopBars: 48 },
-  costs: { feePctAuthenticated: 0.20, feePctUnauthenticated: 0.45, maxCostFractionOfR: 0.25 },
+  costs: { feePctAuthenticated: 0.20, feePctUnauthenticated: 0.45, maxCostFractionOfTarget: 0.25 },
   limits: {
     dailyLossPct: 3, maxDrawdownPct: 10, maxEntriesPerDay: 6, cooldownBars: 3, staleBars: 1.5,
   },

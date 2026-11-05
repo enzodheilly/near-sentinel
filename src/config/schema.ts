@@ -69,7 +69,7 @@ export const riskConfigSchema = z
     costs: z.strictObject({
       feePctAuthenticated: z.number().min(0).max(5),
       feePctUnauthenticated: z.number().min(0).max(5),
-      maxCostFractionOfR: z.number().gt(0).max(1),
+      maxCostFractionOfTarget: z.number().gt(0).max(1),
     }),
     limits: z.strictObject({
       dailyLossPct: pct,
