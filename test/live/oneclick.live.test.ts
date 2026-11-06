@@ -11,6 +11,13 @@ import { OneClickClient, type QuoteRequest } from "../../src/execution/oneclick.
 
 const OUT = new URL("./recorded/quote-dry.json", import.meta.url).pathname;
 
+// Vitest does not read .env: load the local one (never committed) so ONECLICK_JWT is used when present.
+try {
+  process.loadEnvFile(new URL("../../.env", import.meta.url).pathname);
+} catch {
+  // no .env: run unauthenticated (1Click then adds 0.25% to the fee)
+}
+
 describe("1Click live", () => {
   it("tokens list our three assets with the configured decimals", async () => {
     const tokens = await new OneClickClient({ jwt: process.env["ONECLICK_JWT"] }).tokens();
@@ -26,6 +33,8 @@ describe("1Click live", () => {
     };
     const res = await c.quote(req);
     expect(BigInt(res.quote.amountOut)).toBeGreaterThan(0n);
+    // printed so the owner sees which fee schedule applied; the key itself is never printed or written
+    console.log(`1Click dry quote: 25 USDC → ${res.quote.amountOutFormatted} NEAR (${c.authenticated ? "partner key" : "NO partner key"}; USD in ${res.quote.amountInUsd}, out ${res.quote.amountOutUsd})`);
     mkdirSync(dirname(OUT), { recursive: true });
     writeFileSync(OUT, `${JSON.stringify({ recordedAt: new Date().toISOString(), authenticated: c.authenticated, request: req, response: res }, null, 2)}\n`);
   }, 30_000);
