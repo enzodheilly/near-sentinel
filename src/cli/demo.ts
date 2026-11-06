@@ -10,6 +10,7 @@ import { configHash, type RiskConfig } from "../config/schema.ts";
 import { loadFixtureSet } from "../data/fixtures.ts";
 import type { Decision } from "../decision/engine.ts";
 import { runReplay, scenarioBars, type ReplayRun } from "../execution/replay.ts";
+import { saveState } from "./status.ts";
 
 export const SCENARIOS = ["demo-entry", "demo-refusal"] as const;
 const ONECLICK_QUOTE = "https://1click.chaindefuser.com/v0/quote";
@@ -25,6 +26,8 @@ export interface DemoOptions {
   readonly fetch?: typeof fetch;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly now?: () => number;
+  /** Where the final replay state is saved for `pnpm status`. */
+  readonly statePath?: string;
 }
 
 export function gitVersion(root: string): string {
@@ -102,7 +105,9 @@ export async function runDemo(o: DemoOptions): Promise<number> {
   for (const name of SCENARIOS) {
     const set = await loadFixtureSet(join(o.root, "fixtures", name));
     const bars = scenarioBars(set);
-    printRun(await runReplay({ set, cfg, meta, dir: o.out, ...(bars ? { bars } : {}) }), o.write);
+    const run = await runReplay({ set, cfg, meta, dir: o.out, ...(bars ? { bars } : {}) });
+    printRun(run, o.write);
+    if (o.statePath) await saveState(o.statePath, { savedAt: (o.now ?? Date.now)(), source: `replay ${run.name}`, portfolio: run.end });
   }
   o.write("");
   for (const l of (await tryDryQuote(cfg, o)).lines) o.write(l);
