@@ -62,16 +62,20 @@ describe("buildRecord", () => {
     expect(r).toMatchObject({ version: 1, agentVersion: "53499de", configHash: META.configHash, asset: "NEAR", barTime, outcome: { action: "TRADE" } });
     expect(r.inputs.candles.map((c) => `${c.symbol} ${c.interval}`)).toEqual(["NEARUSDT 1h", "BTCUSDT 1h", "BTCUSDT 4h"]);
     expect(r.inputs.candles[0]).toMatchObject({ lastOpenTime: barTime, count: 201 });
-    expect(r.inputs.quote).toEqual({ quoteId: "q-1", amountIn: "250000000" });
+    const q = r.inputs.externals.calls.find((c) => c.kind === "quote");
+    expect(q).toMatchObject({ kind: "quote", slippageBps: 50, quote: { raw: { quoteId: "q-1", amountIn: "250000000" } } });
+    expect(r.inputs.externals.calls.map((c) => c.kind)).toEqual(["balances", "quote", "clock", "executed", "llm"]);
+    expect(r.inputs.now).toBe(barTime + H + 30_000);
     expect(r.llm).toMatchObject({ verdict: "approve", signature: "0xsig", signatureKind: "provider_tee" });
     expect(r.signals.map((s) => s.kind)).toEqual(["BB_BREAKOUT", "RSI_MOMENTUM", "FVG_SUPPORT", "BTC_REGIME"]);
   });
 
-  it("the BTC 4h window holds only candles closed by the bar's close; a BTC decision has no separate BTC 1h", () => {
+  it("the BTC 4h window holds only candles closed by the bar's close; every decision references all three windows", () => {
     const r = tradeRecord();
     const w4 = r.inputs.candles.find((c) => c.interval === "4h")!;
     expect(w4.lastOpenTime + 4 * H).toBeLessThanOrEqual(barTime + H);
-    expect(decisionWindows(market, "BTC", barTime).map((c) => `${c.symbol} ${c.interval}`)).toEqual(["BTCUSDT 1h", "BTCUSDT 4h"]);
+    // a BTC decision depends on NEAR's freshness too (limits gate)
+    expect(decisionWindows(market, "BTC", barTime)).toEqual(r.inputs.candles);
   });
 
   it("the candle refs are the hashes of exactly the candles the engine read", () => {
@@ -84,7 +88,7 @@ describe("buildRecord", () => {
     const r = buildRecord(hold, decisionWindows(market, hold.asset, barTime), META);
     expect(r.outcome).toEqual({ action: "HOLD", reason: "NO_SIGNAL" });
     expect(r).not.toHaveProperty("llm");
-    expect(r.inputs).not.toHaveProperty("quote");
+    expect(r.inputs.externals.calls).toEqual([]);
   });
 });
 

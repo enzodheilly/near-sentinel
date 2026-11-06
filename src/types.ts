@@ -235,6 +235,25 @@ export type DecisionOutcome =
   | { readonly action: "REJECT"; readonly reason: RejectReason; readonly proposal?: TradeProposal }
   | { readonly action: "HOLD"; readonly reason: RejectReason | "NO_SIGNAL" };
 
+/**
+ * Everything a decision received from outside the engine, in call order, so that `verify` can replay the
+ * decision exactly: quotes, the clock at each check, balances, whether a trade key was already executed,
+ * and the LLM's raw answer (or its error). Replaying the same calls through the same code must give the
+ * same record byte for byte.
+ */
+export type ExternalCall =
+  | { readonly kind: "quote"; readonly slippageBps: number; readonly quote: Quote }
+  | { readonly kind: "clock"; readonly now: number }
+  | { readonly kind: "balances"; readonly balances: Readonly<Record<AssetSymbol, bigint>> }
+  | { readonly kind: "executed"; readonly key: string; readonly value: boolean }
+  | { readonly kind: "llm"; readonly review?: LlmReview; readonly error?: string };
+
+export interface Externals {
+  readonly authenticated: boolean; // partner JWT present
+  readonly policy?: { readonly paused: boolean; readonly maxAmountInUsd: number }; // Tier 2
+  readonly calls: readonly ExternalCall[];
+}
+
 export interface DecisionRecord {
   readonly version: 1;
   readonly agentVersion: string; // git commit
@@ -243,8 +262,9 @@ export interface DecisionRecord {
   readonly barTime: number;
   readonly inputs: {
     readonly candles: readonly CandleWindowRef[];
-    readonly portfolio: PortfolioSnapshot;
-    readonly quote?: unknown; // raw quote payload, if one was requested
+    readonly portfolio: PortfolioSnapshot; // state the decision was taken on (for exits: before this bar's exits)
+    readonly now: number; // tick time (clock at the start of the tick)
+    readonly externals: Externals;
   };
   readonly signals: readonly Signal[];
   readonly checks: readonly CheckResult[];

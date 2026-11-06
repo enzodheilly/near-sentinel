@@ -5,6 +5,7 @@
  * The file `records/<hash>.json` holds exactly the canonical bytes that were hashed, so
  * `sha256(file) === <hash>` can be checked with any tool, without this code.
  *
+ * Externals (quotes, clock, balances, LLM answer) are copied in call order, so `verify` can replay the decision.
  * Candles are referenced, not copied: each CandleWindowRef carries the SHA-256 of the canonical candle array
  * the engine read (asset 1h up to the bar, BTC 1h up to the bar, BTC 4h closed by the bar's close).
  */
@@ -25,16 +26,18 @@ export interface RecordMeta {
 
 const SYMBOL: Readonly<Record<TradableAsset, string>> = { BTC: "BTCUSDT", NEAR: "NEARUSDT" };
 
-/** The candle windows the engine read for `asset` at bar `barTime`, exactly as cut for that bar. */
-export function decisionWindows(market: TickMarket, asset: TradableAsset, barTime: number): CandleWindowRef[] {
+/**
+ * The candle windows a decision depends on, exactly as cut for bar `barTime`: every 1h series (signals of the
+ * asset, BTC for the regime, and the freshness of all of them for the limits gate) and the BTC 4h candles
+ * closed by the bar's close. Same three windows for every decision of a tick, in a fixed order.
+ */
+export function decisionWindows(market: TickMarket, _asset: TradableAsset, barTime: number): CandleWindowRef[] {
   const upTo = (cs: readonly Candle[]) => cs.filter((c) => c.openTime <= barTime);
   const closed4h = market.btc4h.filter((c) => c.openTime + INTERVAL_MS["4h"] <= barTime + INTERVAL_MS["1h"]);
   const refs: CandleWindowRef[] = [];
-  const own = upTo(market.candles1h[asset]);
-  if (own.length) refs.push(windowRef(SYMBOL[asset], "1h", own));
-  if (asset !== "BTC") {
-    const btc = upTo(market.candles1h.BTC);
-    if (btc.length) refs.push(windowRef("BTCUSDT", "1h", btc));
+  for (const a of ["NEAR", "BTC"] as const) {
+    const cs = upTo(market.candles1h[a]);
+    if (cs.length) refs.push(windowRef(SYMBOL[a], "1h", cs));
   }
   if (closed4h.length) refs.push(windowRef("BTCUSDT", "4h", closed4h));
   return refs;
@@ -47,11 +50,7 @@ export function buildRecord(d: Decision, candles: readonly CandleWindowRef[], me
     configHash: meta.configHash,
     asset: d.asset,
     barTime: d.barTime,
-    inputs: {
-      candles,
-      portfolio: d.portfolio,
-      ...(d.quote ? { quote: d.quote.raw ?? null } : {}),
-    },
+    inputs: { candles, portfolio: d.portfolio, now: d.now, externals: d.externals },
     signals: d.signals,
     checks: d.checks,
     ...(d.llm ? { llm: d.llm } : {}),
