@@ -2,6 +2,7 @@ import { mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { MemoryKeys } from "../../src/execution/idempotency.ts";
 import { defaultRiskConfig as cfg } from "../../src/config/default.ts";
 import { configHash, type RiskConfig } from "../../src/config/schema.ts";
 import { loadFixtureSet, type FixtureSet } from "../../src/data/fixtures.ts";
@@ -44,7 +45,7 @@ async function fullReplay(set: FixtureSet, dir: string) {
   const btc4h = set.series["BTCUSDT"]!["4h"]!.candles;
   let portfolio: PortfolioSnapshot = { at: near[200]!.openTime, balances: { USDC: 1000, BTC: 0, NEAR: 0 }, positions: [], equityUsd: 1000,
     peakEquityUsd: 1000, dayStartEquityUsd: 1000, entriesToday: 0, cooldownUntil: {}, killSwitch: false };
-  const executed = new Set<string>();
+  const executed = new MemoryKeys();
   const hashes: string[] = [];
   for (let t = 200; t < near.length; t++) {
     const barTime = near[t]!.openTime;
