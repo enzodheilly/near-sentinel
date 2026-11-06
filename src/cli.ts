@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { runDemo } from "./cli/demo.ts";
 import { runStatus } from "./cli/status.ts";
 import { runVerify } from "./cli/verify.ts";
+import { runExplorer } from "./explorer/build.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const write = (l: string) => process.stdout.write(`${l}\n`);
@@ -31,6 +32,8 @@ async function main(): Promise<number> {
       return runDemo({ root, out, write, env: process.env, statePath: join(root, "state", "portfolio.json") });
     case "verify":
       return runVerify({ root, records: out, args, write });
+    case "explorer":
+      return runExplorer({ root, records: out, write });
     case "status":
       return runStatus({ statePath: join(root, "state", "portfolio.json"), records: out, write });
     default:
