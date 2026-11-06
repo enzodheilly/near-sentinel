@@ -88,3 +88,11 @@ describe("OneClickClient", () => {
     return expect(c.quote(rec.request)).resolves.toMatchObject({ quote: { amountIn: expect.stringMatching(/^\d+$/) } });
   });
 });
+
+describe("recorded live quote (owner's machine, partner key)", () => {
+  it.runIf(existsSync(RECORDED))("shows the partner fee schedule: 1Click echoes appFees of 20 bps", () => {
+    const rec = JSON.parse(readFileSync(RECORDED, "utf8")) as { authenticated: boolean; response: { quoteRequest: { appFees?: { fee: number }[] } } };
+    expect(rec.authenticated).toBe(true);
+    expect(rec.response.quoteRequest.appFees?.map((f) => f.fee)).toEqual([cfg.costs.feePctAuthenticated * 100]);
+  });
+});

@@ -1,0 +1,58 @@
+{
+  "recordedAt": "2026-11-06T22:40:49.293Z",
+  "authenticated": true,
+  "request": {
+    "dry": true,
+    "swapType": "EXACT_INPUT",
+    "slippageTolerance": 50,
+    "originAsset": "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+    "destinationAsset": "nep141:wrap.near",
+    "amount": "25000000",
+    "depositType": "INTENTS",
+    "recipient": "near-sentinel-demo.near",
+    "recipientType": "INTENTS",
+    "refundTo": "near-sentinel-demo.near",
+    "refundType": "INTENTS",
+    "deadline": "2026-11-06T22:42:48.928Z"
+  },
+  "response": {
+    "correlationId": "63380407-0b32-4ec2-94ea-e28acc259179",
+    "timestamp": "2026-11-06T22:40:48.952Z",
+    "signature": "ed25519:2WHbQ8n5FB1UuhSpU9sBmQ4LZbT8BsVrMTxQ2ryhPEkuZy1TFu2Boc5WuBJzjmdkrMFD4MxvnkGPbGEvxdZDj7Qr",
+    "quoteRequest": {
+      "dry": true,
+      "depositMode": "SIMPLE",
+      "swapType": "EXACT_INPUT",
+      "slippageTolerance": 50,
+      "originAsset": "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "depositType": "INTENTS",
+      "destinationAsset": "nep141:wrap.near",
+      "amount": "25000000",
+      "refundTo": "near-sentinel-demo.near",
+      "refundType": "INTENTS",
+      "recipient": "near-sentinel-demo.near",
+      "recipientType": "INTENTS",
+      "deadline": "2026-11-06T22:42:48.928Z",
+      "confidentiality": "public",
+      "quoteWaitingTimeMs": 0,
+      "insured": false,
+      "appFees": [
+        {
+          "recipient": "5880ad2b362620fadf759cbceb1cd5737ce8c6ed7fb8e9942881e6731f9247dd",
+          "fee": 20
+        }
+      ]
+    },
+    "quote": {
+      "amountIn": "25000000",
+      "amountInFormatted": "25.0",
+      "amountInUsd": "24.990675000000",
+      "minAmountIn": "25000000",
+      "amountOut": "6726298691259673509099948",
+      "amountOutFormatted": "6.726298691259673509099948",
+      "amountOutUsd": "24.887305157661",
+      "minAmountOut": "6692667197803375141554448",
+      "timeEstimate": 10
+    }
+  }
+}
