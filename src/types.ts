@@ -84,6 +84,7 @@ export const REJECT_REASONS = [
   "DUPLICATE",
   "POLICY_DENIED",
   "LLM_VETO",
+  "EXIT_PENDING",
 ] as const;
 export type RejectReason = (typeof REJECT_REASONS)[number];
 
@@ -196,7 +197,8 @@ export interface ExecutionReport {
 
 export interface Executor {
   readonly mode: ExecutionMode;
-  quote(p: TradeProposal): Promise<Quote>;
+  /** Quote for `p` with this slippage tolerance (bps): 50 for entries, 150 for exits, 250 on an exit retry. */
+  quote(p: TradeProposal, slippageBps: number): Promise<Quote>;
   execute(p: TradeProposal, q: Quote): Promise<ExecutionReport>;
   balances(): Promise<Readonly<Record<AssetSymbol, bigint>>>;
 }

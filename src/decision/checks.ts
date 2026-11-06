@@ -114,24 +114,26 @@ export interface CheckedQuote {
 
 /**
  * Quote, check, and for exits re-quote once at the wider tolerance. `getQuote(toleranceBps)` asks 1Click for a
- * quote with that slippage tolerance; `context()` gives the state at check time (clock, balance…).
+ * quote with that slippage tolerance; `context(quote)` gives the state at check time (clock, balance of the
+ * quote's origin asset…).
  */
 export async function quoteAndCheck(
   p: TradeProposal,
   getQuote: (toleranceBps: number) => Promise<Quote>,
-  context: () => CheckContext,
+  context: (q: Quote) => CheckContext,
   cfg: Cfg,
 ): Promise<CheckedQuote> {
   const tol = firstTolerance(p, cfg);
   const q1 = await getQuote(tol);
-  const o1 = runChecks(p, q1, context(), cfg, tol);
+  const o1 = runChecks(p, q1, context(q1), cfg, tol);
   const attempts = [{ quote: q1, outcome: o1 }];
   if (o1.ok || p.kind === "ENTRY" || !REQUOTABLE.has(o1.reason)) {
-    return { outcome: o1, quote: q1, attempts, exitStuck: !o1.ok && p.kind === "EXIT" };
+    // a DUPLICATE exit already went through: nothing is stuck
+    return { outcome: o1, quote: q1, attempts, exitStuck: !o1.ok && p.kind === "EXIT" && o1.reason !== "DUPLICATE" };
   }
   const wide = cfg.execution.slippageBps.exitRetry;
   const q2 = await getQuote(wide);
-  const o2 = runChecks(p, q2, context(), cfg, wide);
+  const o2 = runChecks(p, q2, context(q2), cfg, wide);
   attempts.push({ quote: q2, outcome: o2 });
   return { outcome: o2, quote: q2, attempts, exitStuck: !o2.ok };
 }
