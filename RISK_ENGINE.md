@@ -191,6 +191,15 @@ Known limitation: if the agent is offline, open positions are unprotected. The p
 
 Exits are never blocked by any of these rules.
 
+Precisions:
+
+- Both loss thresholds are inclusive: a day PnL of exactly −3% blocks entries, an equity of exactly 90% of peak trips the kill switch.
+- The day counters (start-of-day equity, entries) reset on the first tick of a new UTC day, using the equity at that tick. The kill switch is not a day counter and is never cleared by a day roll.
+- The kill switch closes every open position (exit reason `KILL_SWITCH`) on the tick that trips it, once. Only the owner resets it, which also restarts the peak at the current equity; otherwise the next tick would trip it again.
+- Stale data: a series is stale when its last closed candle ended more than 1.5 × its interval ago (1h series: 90 min; BTC 4h: 6 h). Exactly 1.5 intervals is still fresh.
+- Cooldown: a stop-out on bar `b` blocks the next 3 bars of that asset; the first allowed bar is `b + 4h`. A later, shorter cooldown never shortens an existing one.
+- When several rules block entries, the recorded reason is the first in the order `KILL_SWITCH`, `STALE_DATA`, `DAILY_LOSS_LIMIT`, `MAX_TRADES_PER_DAY`; all of them are still recorded as checks.
+
 ## 7. Pre-trade execution checks
 
 Run on every proposal, entries and exits alike, right after the quote.
