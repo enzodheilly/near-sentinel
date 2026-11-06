@@ -241,9 +241,13 @@ interface DecisionRecord {          // src/types.ts, built by src/decision/recor
   asset: "BTC" | "NEAR";
   barTime: number;                  // openTime of the closed 1h bar
   inputs: {
-    candles: CandleWindowRef[];     // asset 1h, BTC 1h, BTC 4h (closed by the bar's close): sha256 of each window
-    portfolio: PortfolioSnapshot;   // state the decision was taken on
-    quote?: unknown;                // raw 1Click payload, when a quote was requested
+    candles: CandleWindowRef[];     // NEAR 1h, BTC 1h, BTC 4h (closed by the bar's close): sha256 of each window
+    portfolio: PortfolioSnapshot;   // state the decision was taken on (exits: before this bar's exits)
+    now: number;                    // tick time
+    externals: {                    // every answer from outside the engine, in call order
+      authenticated: boolean; policy?: { paused: boolean; maxAmountInUsd: number };
+      calls: ExternalCall[];        // quote | clock | balances | executed | llm (raw answer or error)
+    };
   };
   signals: Signal[];
   checks: CheckResult[];            // every rule evaluated, passed or not
@@ -258,7 +262,7 @@ interface DecisionRecord {          // src/types.ts, built by src/decision/recor
 - Serialised with **RFC 8785 JSON canonicalisation**, then hashed with SHA-256.
 - The full record is written to `records/<hash>.json` (and, in live mode, to a public store). The file holds exactly the canonical bytes that were hashed, so `sha256sum records/<hash>.json` gives back `<hash>` with any tool. Only the hash goes on-chain.
 - Every decision is recorded (and, in live mode, anchored) **before** its trade executes; holds, rejections and exits included.
-- `pnpm verify <hash>` loads the record, re-runs the signal engine and risk engine on `inputs` with the config identified by `configHash`, and checks three things: the recomputed outcome equals `outcome`, the record's hash equals `<hash>`, and `<hash>` is anchored in the contract.
+- `pnpm verify <hash>` loads the record and checks, in order (`src/decision/verify.ts`): the record hashes to `<hash>`; `configHash` names a known configuration; each candle window matches the market data (SHA-256); the decision recomputed with the same code, reading every external answer back from `inputs.externals` in the order the engine asks for it, gives the same record byte for byte (the first difference is reported by its path, e.g. `outcome.action`); and `<hash>` is anchored in the contract (CLI, #31).
 - The LLM part is not recomputed (it is not deterministic). It is verified instead: the stored signature is checked against the NEAR AI Cloud signing identity.
 
 ## 11. LLM usage

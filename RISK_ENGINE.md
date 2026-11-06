@@ -289,7 +289,7 @@ Details of step 3 to 5, as implemented (`src/decision/engine.ts`):
 - Step 3: positions are handled `BTC` then `NEAR`. On the tick the kill switch trips, its `KILL_SWITCH` exits replace the exit machine. A `STOP` fill starts the cooldown (§6). An exit refused twice (§7.2) leaves the position as it was, raises an alert, and step 4 records `HOLD` with `EXIT_PENDING`.
 - Step 5, per asset: signals → convergence (§4) → stop (§5.2) → size with every cap (§5.3) → quote and checks (§7) → cost filter (§5.5, using the slippage measured on that quote) → LLM (§8) → `TRADE`. The LLM is the last gate, so it is only called for a trade that would otherwise go through.
 - LLM `reduce` (or fallback): the size is halved after every cap, checked against the $10 minimum, then quoted and checked again, because a 1Click quote is for a fixed amount. This is a new quote for a new amount, not a retry of a failed one.
-- Each asset sees the portfolio left by the previous one (balances, exposure, entries today).
+- Each asset sees the portfolio left by the previous one (balances, exposure, entries today), and the limits gate (§6) is re-read for each asset: a `BTC` entry that uses up the day's last entry holds `NEAR` with `MAX_TRADES_PER_DAY`.
 - Step 6: every decision (`TRADE`, `REJECT`, `HOLD`, exits included) is recorded before its trade executes.
 
 ## 11. Default configuration
