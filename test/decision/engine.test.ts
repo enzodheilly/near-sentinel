@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { MemoryKeys } from "../../src/execution/idempotency.ts";
 import { defaultRiskConfig as cfg } from "../../src/config/default.ts";
 import { loadFixtureSet } from "../../src/data/fixtures.ts";
 import { runTick, type Decision, type EngineDeps, type LlmContext, type TickInput, type TickMarket } from "../../src/decision/engine.ts";
@@ -71,7 +72,7 @@ describe("runTick on the frozen fixtures", () => {
   let entry: Awaited<ReturnType<typeof market>>;
   let refusal: Awaited<ReturnType<typeof market>>;
   beforeAll(async () => { entry = await market("demo-entry"); refusal = await market("demo-refusal"); });
-  const input = (m: typeof entry, portfolio?: PortfolioSnapshot, executed = new Set<string>()): TickInput =>
+  const input = (m: typeof entry, portfolio?: PortfolioSnapshot, executed = new MemoryKeys()): TickInput =>
     ({ barTime: m.barTime, market: m.market, portfolio: portfolio ?? flat(m.barTime), executed });
 
   it("demo-entry: BTC then NEAR in that order; NEAR trades $250 after quote, checks, cost filter and LLM", async () => {
@@ -97,7 +98,7 @@ describe("runTick on the frozen fixtures", () => {
   });
 
   it("same tick replayed twice → no double execution (DUPLICATE)", async () => {
-    const executed = new Set<string>();
+    const executed = new MemoryKeys();
     const f = fakes({ now: entry.barTime + H + 30_000 });
     await runTick(input(entry, undefined, executed), f.deps, cfg);
     const again = await runTick(input(entry, undefined, executed), f.deps, cfg); // same input portfolio, same keys

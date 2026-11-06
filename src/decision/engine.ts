@@ -22,7 +22,6 @@ import { atr as atrSeries } from "../signals/indicators/atr.ts";
 import {
   INTERVAL_MS,
   LLM_SIZE_MULTIPLIER,
-  idempotencyKey,
   type AssetSymbol,
   type Candle,
   type CheckResult,
@@ -41,6 +40,8 @@ import {
   type TradableAsset,
   type TradeProposal,
 } from "../types.ts";
+import { executeOnce } from "../execution/executor.ts";
+import type { ExecutedKeys } from "../execution/idempotency.ts";
 import { quoteAndCheck, runChecks, type CheckContext, type CheckedQuote } from "./checks.ts";
 import { evaluateConvergence } from "./convergence.ts";
 import { costFilter } from "./costs.ts";
@@ -62,8 +63,8 @@ export interface TickInput {
   readonly barTime: number;
   readonly market: TickMarket;
   readonly portfolio: PortfolioSnapshot;
-  /** Idempotency keys of trades already executed. Updated in place on every fill. */
-  readonly executed: Set<string>;
+  /** Idempotency registry: keys of trades already executed (or in flight). Written around every execution. */
+  readonly executed: ExecutedKeys;
 }
 
 /** Numbers and fixed fields only (§8): no external free text reaches the model. */
@@ -135,7 +136,7 @@ export interface DecisionIO {
 }
 
 /** Wraps the live deps so that every call made for one decision is written to `calls`. */
-function taped(deps: EngineDeps & { readonly llmTimeoutMs: number }, executed: ReadonlySet<string>): { io: DecisionIO; externals: () => Externals } {
+function taped(deps: EngineDeps & { readonly llmTimeoutMs: number }, executed: Pick<ExecutedKeys, "has">): { io: DecisionIO; externals: () => Externals } {
   const calls: ExternalCall[] = [];
   const io: DecisionIO = {
     authenticated: deps.authenticated,
@@ -323,9 +324,8 @@ export async function runTick(input: TickInput, deps: EngineDeps, cfg: RiskConfi
     await deps.onDecision?.(d);
   };
   const fill = async (proposal: TradeProposal, q: Quote): Promise<ExecutionReport> => {
-    const report = await deps.execute(proposal, q);
+    const report = await executeOnce({ execute: deps.execute }, executed, proposal, q);
     executions.push({ proposal, report });
-    if (report.fill && report.status !== "FAILED" && report.status !== "REFUNDED") executed.add(idempotencyKey(proposal));
     return report;
   };
 

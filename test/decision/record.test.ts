@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { configHash } from "../../src/config/schema.ts";
+import { MemoryKeys } from "../../src/execution/idempotency.ts";
 import { defaultRiskConfig as cfg } from "../../src/config/default.ts";
 import { loadFixtureSet, windowRef } from "../../src/data/fixtures.ts";
 import { runTick, type Decision, type EngineDeps, type TickMarket } from "../../src/decision/engine.ts";
@@ -48,7 +49,7 @@ beforeAll(async () => {
   barTime = set.signalBarTime;
   const upTo = (cs: readonly Candle[]) => cs.filter((c) => c.openTime <= barTime);
   market = { candles1h: { NEAR: upTo(set.series["NEARUSDT"]!["1h"]!.candles), BTC: upTo(set.series["BTCUSDT"]!["1h"]!.candles) }, btc4h: set.series["BTCUSDT"]!["4h"]!.candles };
-  decisions = (await runTick({ barTime, market, portfolio: portfolio(barTime), executed: new Set() }, deps(undefined, barTime + H + 30_000), cfg)).decisions;
+  decisions = (await runTick({ barTime, market, portfolio: portfolio(barTime), executed: new MemoryKeys() }, deps(undefined, barTime + H + 30_000), cfg)).decisions;
 });
 
 const tradeRecord = (): DecisionRecord => {
@@ -94,7 +95,7 @@ describe("buildRecord", () => {
 
 describe("hashRecord", () => {
   it("same inputs → same hash, byte for byte, across independent runs", async () => {
-    const again = (await runTick({ barTime, market, portfolio: portfolio(barTime), executed: new Set() }, deps(undefined, barTime + H + 30_000), cfg)).decisions;
+    const again = (await runTick({ barTime, market, portfolio: portfolio(barTime), executed: new MemoryKeys() }, deps(undefined, barTime + H + 30_000), cfg)).decisions;
     const d = again.find((x) => x.outcome.action === "TRADE")!;
     const r2 = buildRecord(d, decisionWindows(market, d.asset, d.barTime), META);
     expect(recordBytes(r2)).toBe(recordBytes(tradeRecord()));
@@ -163,7 +164,7 @@ describe("recorder (engine sink)", () => {
     const rec = recorder(dir, market, META, async (h) => { log.push(`anchor ${h.slice(0, 8)}`); });
     const d = deps(async (x) => { await rec.sink(x); log.push(`recorded ${x.asset} ${x.outcome.action}`); }, barTime + H + 30_000);
     const exec = d.execute;
-    const r = await runTick({ barTime, market, portfolio: portfolio(barTime), executed: new Set() },
+    const r = await runTick({ barTime, market, portfolio: portfolio(barTime), executed: new MemoryKeys() },
       { ...d, execute: async (p, q) => { log.push("execute"); return exec(p, q); } }, cfg);
     expect(rec.hashes).toHaveLength(r.decisions.length);
     expect(log.map((l) => l.replace(/[0-9a-f]{8}$/, "#"))).toEqual(["anchor #", "recorded BTC HOLD", "anchor #", "recorded NEAR TRADE", "execute"]);
