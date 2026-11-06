@@ -234,23 +234,30 @@ The contract has no price oracle, so it enforces limits in **token units**, not 
 A `DecisionRecord` captures everything needed to reproduce a decision:
 
 ```ts
-interface DecisionRecord {
+interface DecisionRecord {          // src/types.ts, built by src/decision/record.ts
   version: 1;
-  agentVersion: string;          // git commit
-  configHash: string;            // sha256 of the canonical risk config
-  barTime: number;
-  inputs: { candles: Record<string, CandleWindowRef>; portfolio: PortfolioSnapshot; quote?: unknown };
+  agentVersion: string;             // git commit
+  configHash: string;               // sha256 of the canonical risk config
+  asset: "BTC" | "NEAR";
+  barTime: number;                  // openTime of the closed 1h bar
+  inputs: {
+    candles: CandleWindowRef[];     // asset 1h, BTC 1h, BTC 4h (closed by the bar's close): sha256 of each window
+    portfolio: PortfolioSnapshot;   // state the decision was taken on
+    quote?: unknown;                // raw 1Click payload, when a quote was requested
+  };
   signals: Signal[];
-  checks: CheckResult[];
-  llm?: { model: string; verdict: "approve" | "reduce" | "reject"; sizeMultiplier: number;
-          rationale: string; chatId: string; signature?: string; signingAddress?: string;
-          signatureKind?: "provider_tee" | "gateway" };
-  outcome: { action: "TRADE" | "REJECT" | "HOLD"; proposal?: TradeProposal; rejectReason?: string };
+  checks: CheckResult[];            // every rule evaluated, passed or not
+  llm?: LlmReview;                  // verdict, rationale, chatId, TEE signature
+  outcome:
+    | { action: "TRADE"; proposal: TradeProposal }
+    | { action: "REJECT"; reason: RejectReason; proposal?: TradeProposal }
+    | { action: "HOLD"; reason: RejectReason | "NO_SIGNAL" };
 }
 ```
 
 - Serialised with **RFC 8785 JSON canonicalisation**, then hashed with SHA-256.
-- The full record is written to `records/<hash>.json` (and, in live mode, to a public store). Only the hash goes on-chain.
+- The full record is written to `records/<hash>.json` (and, in live mode, to a public store). The file holds exactly the canonical bytes that were hashed, so `sha256sum records/<hash>.json` gives back `<hash>` with any tool. Only the hash goes on-chain.
+- Every decision is recorded (and, in live mode, anchored) **before** its trade executes; holds, rejections and exits included.
 - `pnpm verify <hash>` loads the record, re-runs the signal engine and risk engine on `inputs` with the config identified by `configHash`, and checks three things: the recomputed outcome equals `outcome`, the record's hash equals `<hash>`, and `<hash>` is anchored in the contract.
 - The LLM part is not recomputed (it is not deterministic). It is verified instead: the stored signature is checked against the NEAR AI Cloud signing identity.
 
