@@ -220,14 +220,18 @@ Exits accept a wider tolerance, because failing to exit is worse than exiting sl
 
 | Check | Rule | Reject reason |
 |---|---|---|
-| Price sanity | `|P_q − P_ref| / P_ref ≤ 1%`, where `P_q` is the price implied by `amountIn / amountOut` | `QUOTE_PRICE_DEVIATION` |
+| Price sanity | `|P_q − P_ref| / P_ref ≤ 1%` for entries; for exits, never tighter than the slippage tolerance (1.5%, then 2.5% on the retry). `P_q` is the price implied by the quote in USDC per unit: `amountIn / amountOut` for a buy, `amountOut / amountIn` for a sell, in human units | `QUOTE_PRICE_DEVIATION` |
 | Slippage | `(P_q − P_ref) / P_ref` for buys (inverse for sells) ≤ tolerance | `SLIPPAGE_TOO_HIGH` |
-| Quote freshness | Quote younger than 30 s at execution time | `QUOTE_EXPIRED` (re-quote once) |
+| Quote freshness | Quote younger than 30 s at execution time | `QUOTE_EXPIRED` (exits re-quote, see below) |
 | Balance | Origin balance in Intents ≥ `amountIn` | `INSUFFICIENT_BALANCE` |
 | Idempotency | `(asset, barTime, reason)` not already executed | `DUPLICATE` |
 | Contract policy (Tier 2) | Amount within on-chain caps; contract not paused | `POLICY_DENIED` |
 
 For exits, a failed check triggers one re-quote with a wider tolerance (250 bps). If that fails too, the agent pauses entries and raises an alert, but keeps retrying the exit every 60 s.
+
+Entries are never re-quoted, whatever failed (an expired entry quote means the bar is being handled late; the entry is dropped). An exit is re-quoted only for failures a new quote can fix: price sanity, slippage, expiry; `DUPLICATE`, `INSUFFICIENT_BALANCE` and `POLICY_DENIED` are not. A quote for the wrong pair counts as a price-sanity failure. Every check is recorded; when several fail, the reason is the first in the table order (`DUPLICATE` first, then the rows as listed).
+
+*Why the exit sanity bound follows the tolerance:* with a fixed 1% bound, an exit at −1.2% would pass the 150 bps slippage check but fail sanity, so the wider exit tolerances could never be used. The bound still catches a broken quote (wrong decimals, wrong pair), which lands far outside 2.5%.
 
 ## 8. LLM veto
 
