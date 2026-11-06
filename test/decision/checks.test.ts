@@ -139,7 +139,9 @@ describe("quoteAndCheck: retry rules", () => {
     const r = await quoteAndCheck(exit, s.get, () => ctx({ executed: new Set([idempotencyKey(exit)]) }), cfg);
     expect(s.asked).toEqual([150]);
     expect(r.outcome).toMatchObject({ ok: false, reason: "DUPLICATE" });
-    expect(r.exitStuck).toBe(true);
+    expect(r.exitStuck).toBe(false); // already executed: nothing is stuck
+    const broke = await quoteAndCheck(exit, scripted(sellQuote(2)).get, () => ctx({ originBalance: 0n }), cfg);
+    expect(broke).toMatchObject({ exitStuck: true, outcome: { reason: "INSUFFICIENT_BALANCE" } });
   });
 
   it("an expired exit quote is replaced by a fresh one", async () => {
