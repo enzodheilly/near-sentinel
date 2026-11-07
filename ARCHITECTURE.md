@@ -275,6 +275,7 @@ The LLM never proposes or sizes a trade. It receives a proposal that has already
 
 - Model served by NEAR AI Cloud (`https://cloud-api.near.ai/v1`, OpenAI-compatible).
 - We keep the exact request and response bytes and fetch the response signature from `/v1/signature/{chat_id}`.
+- Attestation (`src/decision/llm/attestation.ts`): before the completion, a preflight report with a fresh client nonce lists the gateway and model TEE signer keys. After it, the ed25519 signature must verify, its text must be exactly `model:request_hash:response_hash` (`provider_tee`) or `request_hash:response_hash` (`gateway`) computed from our bytes, and the signer must be a preflight key of that kind. Result: `verified`, `invalid` (signature does not verify) or `unverified` (incomplete or not bound to us). Hardware quotes (TDX, NVIDIA) are not re-verified here.
 - Output is validated with Zod. Any invalid output, timeout (10 s) or API error is treated as `reduce` with multiplier `0.5`, and the record says why. The LLM can make a trade smaller, never larger, and its failure cannot block an exit.
 - Exits (stops, take-profits, kill switch) **never** go through the LLM.
 
