@@ -226,6 +226,8 @@ export interface LlmReview {
   readonly signature?: string;
   readonly signingAddress?: string;
   readonly signatureKind?: "provider_tee" | "gateway";
+  /** Outcome of the signature check at decision time (src/decision/llm/attestation.ts). */
+  readonly attestation?: { readonly status: "verified" | "unverified" | "invalid"; readonly problems: readonly string[] };
 }
 
 // ---------- decision records (ARCHITECTURE.md §10) ----------
