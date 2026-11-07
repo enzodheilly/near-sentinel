@@ -138,6 +138,8 @@ export interface ReplayParams {
   readonly options?: ReplayOptions;
   /** Number of bars to replay from the first evaluable bar (default: to the end of the fixture). */
   readonly bars?: number;
+  /** LLM stage; defaults to the replay stub (no model called). Paper mode passes the attested veto. */
+  readonly llm?: EngineDeps["llm"];
 }
 
 /**
@@ -148,7 +150,7 @@ export interface ReplayParams {
 export const scenarioBars = (set: FixtureSet): number | undefined => (set.expected.decision === "REJECT" ? 25 : undefined);
 
 /** Runs the engine bar by bar over a fixture set, from the first evaluable bar to the last. */
-export async function runReplay({ set, cfg, meta, dir, startUsdc = 1000, keys = new MemoryKeys(), options = {}, bars }: ReplayParams): Promise<ReplayRun> {
+export async function runReplay({ set, cfg, meta, dir, startUsdc = 1000, keys = new MemoryKeys(), options = {}, bars, llm }: ReplayParams): Promise<ReplayRun> {
   const near = set.series["NEARUSDT"]?.["1h"]?.candles ?? [];
   const btc = set.series["BTCUSDT"]?.["1h"]?.candles ?? [];
   const btc4h = set.series["BTCUSDT"]?.["4h"]?.candles ?? [];
@@ -180,7 +182,7 @@ export async function runReplay({ set, cfg, meta, dir, startUsdc = 1000, keys = 
       balances: () => executor.balances(),
       quote: (p, bps) => executor.quote(p, bps),
       execute: (p, q) => executor.execute(p, q),
-      llm: () => replayLlm(cfg),
+      llm: llm ?? (() => replayLlm(cfg)),
       onDecision: rec.sink,
     };
     const r = await runTick({ barTime, market, portfolio, executed: keys }, deps, cfg);

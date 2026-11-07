@@ -9,7 +9,7 @@
  *   5. the recomputed record equals the stored one. The first difference is reported by its path.
  *
  * The LLM verdict is replayed, not recomputed (a model is not deterministic); its TEE signature is checked
- * separately (#35). Whether the hash is anchored on-chain is checked by the CLI (#31).
+ * separately: the signed text is rebuilt from the stored hashes and the ed25519 signature checked. Whether the hash is anchored on-chain is checked by the CLI (#31).
  */
 
 import type { RiskConfig } from "../config/schema.ts";
@@ -18,6 +18,7 @@ import { canonicalJson } from "../lib/canonical.ts";
 import type { AssetSymbol, Candle, DecisionRecord, ExitProposal, ExternalCall, Interval, LlmReview, Quote } from "../types.ts";
 import { evaluateEntry, exitPlan, marketFacts, quoteChecked, type Decision, type DecisionIO, type TickMarket } from "./engine.ts";
 import { applyKillSwitch, entryGate } from "./limits.ts";
+import { recheckReview } from "./llm/attestation.ts";
 import { buildRecord, hashRecord } from "./record.ts";
 
 export interface VerifyContext {
@@ -104,6 +105,11 @@ export async function verifyRecord(rec: DecisionRecord, ctx: VerifyContext): Pro
   const b = JSON.parse(canonicalJson(rebuilt)) as unknown;
   const diff = firstDifference(a, b, "");
   if (diff) problems.push(`recomputed decision differs at ${diff.path || "(root)"}: record has ${show(diff.a)}, recomputation gives ${show(diff.b)}`);
+  if (rec.llm) {
+    const llm = recheckReview(rec.llm);
+    problems.push(...llm.problems);
+    notes.push(...llm.notes);
+  }
   return done();
 }
 

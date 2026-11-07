@@ -361,7 +361,10 @@ function detail() {
   }
   const llm = r.llm;
   facts.push(["LLM", llm ? `${llm.verdict} × ${llm.sizeMultiplier} · ${llm.model}` : "not consulted (the LLM is only asked once every rule has passed)"]);
-  if (llm) facts.push(["LLM signature", llm.signature ? `${llm.signatureKind || "signed"} · ${llm.signingAddress || ""}` : "none: replay mode, no model was called"]);
+  if (llm) facts.push(["LLM signature", llm.signature
+    ? `${llm.attestation ? llm.attestation.status : "signed"} · ${llm.signatureKind || "?"} · ${llm.signingAddress || ""}`
+    : llm.chatId ? `none (${llm.attestation ? llm.attestation.problems.join("; ") : "not recorded"})` : "none: replay mode, no model was called"]);
+  if (llm && llm.fallbackReason) facts.push(["LLM fallback", llm.fallbackReason]);
   facts.push(["On-chain anchor", "not anchored (replay; the guardrail contract anchors live decisions)"]);
   facts.push(["Record hash", d.hash]);
   facts.push(["Verification", d.verified ? "✓ recomputed from its inputs: same record, byte for byte" : "✗ " + d.problems.join(" · ")]);

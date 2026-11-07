@@ -165,3 +165,37 @@ export function checkAttestation(
   }
   return { status: problems.length ? "unverified" : "verified", problems, ...base };
 }
+
+/**
+ * Offline re-check of the LLM evidence stored in a decision record (`verify`, #35). The signed text is rebuilt
+ * from the stored model id and byte hashes, so a changed hash, model or signature is caught. The signer's
+ * binding to the hardware report is what the record says was checked at decision time (`attestation`); this
+ * re-check confirms the record is consistent with it. A problem means the record contradicts itself.
+ */
+export function recheckReview(r: {
+  readonly model: string; readonly chatId?: string; readonly requestSha256?: string; readonly responseSha256?: string;
+  readonly signature?: string; readonly signingAddress?: string; readonly signatureKind?: SignatureKind;
+  readonly attestation?: { readonly status: AttestationStatus; readonly problems: readonly string[] };
+}): { problems: string[]; notes: string[] } {
+  const problems: string[] = [];
+  const notes: string[] = [];
+  const recorded = r.attestation?.status;
+  if (!r.chatId) {
+    if (recorded === "verified") problems.push("llm: recorded as verified but there is no chat id");
+    else notes.push(`llm: no model call to check (${r.model})`);
+    return { problems, notes };
+  }
+  if (!r.signature || !r.signingAddress || !r.signatureKind || !r.requestSha256 || !r.responseSha256) {
+    if (recorded === "verified") problems.push("llm: recorded as verified but the signature evidence is incomplete");
+    else notes.push(`llm: chat ${r.chatId} has no complete signature evidence (recorded ${recorded ?? "without status"}${r.attestation?.problems.length ? `: ${r.attestation.problems.join("; ")}` : ""})`);
+    return { problems, notes };
+  }
+  const ok = verifyEd25519(expectedText(r.signatureKind, r.model, r.requestSha256, r.responseSha256), r.signature, r.signingAddress);
+  const who = `${r.signatureKind} key ${r.signingAddress.slice(0, 12)}…`;
+  if (ok && recorded === "invalid") problems.push("llm: recorded as invalid but the signature verifies");
+  else if (!ok && recorded !== "invalid") problems.push(`llm: the ed25519 signature does not verify over ${r.signatureKind === "provider_tee" ? "model:request:response" : "request:response"} (recorded ${recorded ?? "without status"})`);
+  else if (!ok) notes.push(`llm: signature recorded as invalid at decision time, confirmed (${who})`);
+  else if (recorded === "verified") notes.push(`llm: answer signed by the ${who}, bound to a nonce-fresh attestation report at decision time`);
+  else notes.push(`llm: answer signed by the ${who}; recorded as ${recorded ?? "without status"}${r.attestation?.problems.length ? `: ${r.attestation.problems.join("; ")}` : ""}`);
+  return { problems, notes };
+}
