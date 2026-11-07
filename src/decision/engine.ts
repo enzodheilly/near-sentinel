@@ -436,7 +436,7 @@ function applyExitFill(p: PortfolioSnapshot, x: ExitProposal, r: ExecutionReport
 /** §8: any failure, or a verdict inconsistent with its multiplier, becomes `reduce` (× 0.5) with the reason. */
 export async function reviewSafely(io: Pick<DecisionIO, "llm">, ctx: LlmContext, cfg: RiskConfig): Promise<LlmReview> {
   const fallback = (why: string): LlmReview => ({
-    model: cfg.llm.model, verdict: "reduce", sizeMultiplier: cfg.llm.fallbackMultiplier as 0.5, rationale: "", fallbackReason: why,
+    model: cfg.llm.model, verdict: cfg.llm.fallbackMultiplier === 0 ? "reject" : "reduce", sizeMultiplier: cfg.llm.fallbackMultiplier, rationale: "", fallbackReason: why,
   });
   try {
     const r = await io.llm(ctx);
