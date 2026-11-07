@@ -27,6 +27,14 @@ const num = z.union([z.number(), z.string().regex(/^-?\d+(\.\d+)?$/)]).transform
 const row = z.tuple([z.number().int(), num, num, num, num, num, z.number().int()]).rest(z.unknown());
 const rows = z.array(row);
 
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new BinanceError("schema", `answer is not JSON: ${text.slice(0, 160)}`);
+  }
+}
+
 export interface KlineQuery {
   readonly symbol: string;
   readonly interval: Interval;
@@ -51,12 +59,21 @@ export class BinanceClient {
     this.timeoutMs = o.timeoutMs ?? 10_000;
   }
 
-  /** The latest `limit` candles of `symbol`, closed at `now`, oldest first. */
-  async closedCandles(q: KlineQuery, now: number): Promise<Candle[]> {
-    const qs = new URLSearchParams({ symbol: q.symbol, interval: q.interval, limit: String(Math.min(1000, q.limit + 1)), ...(q.endTime ? { endTime: String(q.endTime) } : {}) });
+  /** Last traded price of each symbol (GET /api/v3/ticker/price), for the price watcher. */
+  async lastPrices(symbols: readonly string[]): Promise<Record<string, number>> {
+    const qs = new URLSearchParams({ symbols: JSON.stringify(symbols) });
+    const text = await this.get(`/api/v3/ticker/price?${qs}`);
+    const parsed = z.array(z.object({ symbol: z.string(), price: num })).safeParse(parseJson(text));
+    if (!parsed.success) throw new BinanceError("schema", `unexpected ticker answer: ${parsed.error.issues[0]?.message}`);
+    const out: Record<string, number> = {};
+    for (const t of parsed.data) if (t.price > 0) out[t.symbol] = t.price;
+    return out;
+  }
+
+  private async get(path: string): Promise<string> {
     let res: Response;
     try {
-      res = await this.f(`${this.base}/api/v3/klines?${qs}`, { headers: { accept: "application/json", "user-agent": MARKET_USER_AGENT }, signal: AbortSignal.timeout(this.timeoutMs) });
+      res = await this.f(`${this.base}${path}`, { headers: { accept: "application/json", "user-agent": MARKET_USER_AGENT }, signal: AbortSignal.timeout(this.timeoutMs) });
     } catch (e) {
       const t = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
       throw new BinanceError(t ? "timeout" : "network", t ? `no answer within ${this.timeoutMs} ms` : e instanceof Error ? e.message : String(e));
@@ -65,14 +82,15 @@ export class BinanceClient {
     if (res.status === 429 || res.status === 418) throw new BinanceError("rate_limit", `HTTP ${res.status}: rate limited`, res.status);
     if (res.status === 451) throw new BinanceError("region", "HTTP 451: not available from this region", 451);
     if (!res.ok) throw new BinanceError("http", `HTTP ${res.status}: ${text.slice(0, 160)}`, res.status);
-    let json: unknown;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      throw new BinanceError("schema", `answer is not JSON: ${text.slice(0, 160)}`, res.status);
-    }
+    return text;
+  }
+
+  /** The latest `limit` candles of `symbol`, closed at `now`, oldest first. */
+  async closedCandles(q: KlineQuery, now: number): Promise<Candle[]> {
+    const qs = new URLSearchParams({ symbol: q.symbol, interval: q.interval, limit: String(Math.min(1000, q.limit + 1)), ...(q.endTime ? { endTime: String(q.endTime) } : {}) });
+    const json = parseJson(await this.get(`/api/v3/klines?${qs}`));
     const parsed = rows.safeParse(json);
-    if (!parsed.success) throw new BinanceError("schema", `unexpected row at ${parsed.error.issues[0]?.path.join(".")}: ${parsed.error.issues[0]?.message}`, res.status);
+    if (!parsed.success) throw new BinanceError("schema", `unexpected row at ${parsed.error.issues[0]?.path.join(".")}: ${parsed.error.issues[0]?.message}`);
     const step = INTERVAL_MS[q.interval];
     const out: Candle[] = [];
     for (const [openTime, open, high, low, close, volume] of parsed.data) {

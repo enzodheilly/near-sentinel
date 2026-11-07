@@ -80,3 +80,19 @@ export function manageExit(p: Position, bar: Candle, atr: number, cfg: Exits): E
 
   return { position: { ...p, quantity, stopPrice: stop, tp1Hit, highestCloseSinceEntry: highest }, exits };
 }
+
+/**
+ * Between ticks (§5.6): the price watcher's observation of `price` at `at` is treated as a bar with
+ * open = high = low = close = price, and only the price levels are checked: stop, TP1, TP2. Trailing and the
+ * time stop stay on closed bars. Returns null when nothing is breached.
+ */
+export function watchExit(p: Position, price: number, at: number, cfg: Exits): ExitStep | null {
+  if (!(p.quantity > 0) || !(price > 0)) return null;
+  const hour = Math.floor(at / INTERVAL_MS["1h"]) * INTERVAL_MS["1h"];
+  const bar: Candle = { openTime: hour, open: price, high: price, low: price, close: price, volume: 0 };
+  if (price > p.stopPrice && price < p.takeProfit[0] && !(p.tp1Hit && price >= p.takeProfit[1])) return null;
+  const step = manageExit({ ...p, entryBarTime: hour }, bar, Number.NaN, { ...cfg, timeStopBars: Number.POSITIVE_INFINITY });
+  if (step.exits.length === 0) return null;
+  // the watcher never moves the trailing reference: keep the closed-bar state
+  return { exits: step.exits, position: step.position ? { ...step.position, entryBarTime: p.entryBarTime, highestCloseSinceEntry: p.highestCloseSinceEntry } : null };
+}

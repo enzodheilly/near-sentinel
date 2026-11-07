@@ -177,6 +177,8 @@ Reject with `COST_TOO_HIGH` if `cost_px > 0.25 × (1.5 × R_dist)`, i.e. a quart
 
 NEAR Intents has no resting stop orders. Stops and targets are evaluated by the agent at every tick and, between ticks, by a **price watcher** that polls the reference price every 60 seconds. A breach triggers a market exit immediately, without waiting for the candle close.
 
+Implementation (`src/execution/watcher.ts`, `runWatch` in the engine): the watcher reads the Binance last price; the observation is treated as a bar with open = high = low = close = price and only the stop, TP1 and TP2 levels are checked (trailing and the time stop stay on closed bars). The exit goes through the same quote, checks, record and idempotent execution as a tick; its record carries `inputs.trigger {price, at}` and `verify` re-derives the exit from it. No entry is ever taken by the watcher.
+
 Known limitation: if the agent is offline, open positions are unprotected. The per-position cap (25% of equity) bounds the damage. A liveness alert fires if no heartbeat is written for 5 minutes.
 
 ## 6. Portfolio limits and circuit breakers

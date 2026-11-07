@@ -17,6 +17,7 @@ import { windowRef } from "../data/fixtures.ts";
 import { canonicalJson } from "../lib/canonical.ts";
 import type { AssetSymbol, Candle, DecisionRecord, ExitProposal, ExternalCall, Interval, LlmReview, Quote } from "../types.ts";
 import { evaluateEntry, exitPlan, marketFacts, quoteChecked, type Decision, type DecisionIO, type TickMarket } from "./engine.ts";
+import { watchExit } from "./exits.ts";
 import { applyKillSwitch, entryGate } from "./limits.ts";
 import { recheckReview } from "./llm/attestation.ts";
 import { buildRecord, hashRecord } from "./record.ts";
@@ -97,7 +98,7 @@ export async function verifyRecord(rec: DecisionRecord, ctx: VerifyContext): Pro
   }
   if (tape.left() > 0) problems.push(`externals: ${tape.left()} recorded call(s) were never asked for by the recomputation`);
 
-  const rebuilt = buildRecord({ ...decision, externals: rec.inputs.externals }, rec.inputs.candles, {
+  const rebuilt = buildRecord({ ...decision, externals: rec.inputs.externals, ...(rec.inputs.trigger ? { trigger: rec.inputs.trigger } : {}) }, rec.inputs.candles, {
     agentVersion: rec.agentVersion,
     configHash: rec.configHash,
   });
@@ -124,7 +125,11 @@ async function recompute(rec: DecisionRecord, market: TickMarket, io: DecisionIO
   if (proposal?.kind === "EXIT") {
     const { prices } = marketFacts(market, barTime, p);
     const killExits = proposal.reason === "KILL_SWITCH" ? applyKillSwitch({ ...p, killSwitch: false }, barTime, prices, cfg.limits).exits : [];
-    const plan = exitPlan(p, asset, barTime, market, killExits, cfg);
+    const trigger = rec.inputs.trigger;
+    const pos = p.positions.find((x) => x.asset === asset && x.quantity > 0);
+    const watched = trigger && pos ? watchExit(pos, trigger.price, trigger.at, cfg.exits) : null;
+    if (trigger) notes.push(`watcher exit: price ${trigger.price} observed at ${new Date(trigger.at).toISOString()} (an input, like a quote)`);
+    const plan = trigger ? (watched ? { exits: watched.exits, after: watched.position } : null) : exitPlan(p, asset, barTime, market, killExits, cfg);
     const derived = plan && plan !== "NO_BAR" ? plan.exits.find((e) => sameJson(e, proposal)) : undefined;
     if (!derived) {
       throw new ReplayError(`outcome.proposal: the exit ${proposal.reason} of ${proposal.quantity} ${asset} is not what the exit machine produces for this position and bar`);
