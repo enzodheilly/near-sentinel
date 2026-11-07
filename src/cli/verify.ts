@@ -6,7 +6,7 @@
  * the LLM TEE signature (#33/#35) and the on-chain anchor (#44).
  */
 
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultRiskConfig } from "../config/default.ts";
 import { configHash, type RiskConfig } from "../config/schema.ts";
@@ -27,6 +27,22 @@ export async function loadAllFixtures(root: string): Promise<FixtureSet[]> {
   const dir = join(root, "fixtures");
   const names = (await readdir(dir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name).sort();
   return Promise.all(names.map((n) => loadFixtureSet(join(dir, n))));
+}
+
+/** The live candle archive (paper and live modes, data/candles) as a source of candles for verify. */
+export async function loadArchiveSet(dir: string): Promise<FixtureSet> {
+  const series: Record<string, Record<string, { candles: Candle[] }>> = {};
+  let files: string[] = [];
+  try {
+    files = (await readdir(dir)).filter((f) => /^[A-Z0-9]+-(1h|4h)\.json$/.test(f));
+  } catch {
+    // no archive yet
+  }
+  for (const f of files) {
+    const j = JSON.parse(await readFile(join(dir, f), "utf8")) as { symbol: string; interval: string; candles: Candle[] };
+    (series[j.symbol] ??= {})[j.interval] = { candles: j.candles };
+  }
+  return { name: "candle archive (data/candles)", series } as unknown as FixtureSet;
 }
 
 /** Candles for a record: the first fixture set whose series cover every window the record references. */
@@ -67,7 +83,7 @@ export async function runVerify(o: VerifyCliOptions): Promise<number> {
   const configs = o.configs ?? new Map([[configHash(defaultRiskConfig), defaultRiskConfig]]);
   const { hashes, errors } = await resolveHashes(o.records, o.args);
   for (const e of errors) o.write(`✗ ${e}`);
-  const sets = await loadAllFixtures(o.root);
+  const sets = [...(await loadAllFixtures(o.root)), await loadArchiveSet(join(o.root, "data", "candles"))];
   const all = o.args.includes("--all");
   let bad = errors.length;
   let good = 0;
@@ -97,7 +113,7 @@ export async function runVerify(o: VerifyCliOptions): Promise<number> {
     o.write(`    candles: ${rec.inputs.candles.map((c) => `${c.symbol} ${c.interval} (${c.count})`).join(", ")} match ${src.set?.name ?? "?"}`);
     o.write(`    recomputed: same signals, checks and outcome, byte for byte`);
     for (const n of res.notes) o.write(`    note: ${n}`);
-    o.write(`    LLM signature: ${rec.llm?.signature ? "present, not checked yet (#33)" : rec.llm ? "none (replay: no model called)" : "no LLM stage in this decision"}`);
+    o.write(`    LLM signature: ${rec.llm?.signature ? `checked (${rec.llm.signatureKind}, recorded ${rec.llm.attestation?.status ?? "without status"})` : rec.llm ? "none" : "no LLM stage in this decision"}`);
     o.write(`    on-chain anchor: not checked yet (contract lands in Sprint 5)`);
   }
   if (all || hashes.length > 1) o.write(`${bad ? "✗" : "✓"} ${good} of ${good + bad} record(s) verified${bad ? `, ${bad} failed` : ""}`);
