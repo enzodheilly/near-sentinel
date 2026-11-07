@@ -98,13 +98,19 @@ export function parseVerdict(content: string, maxChars: number): ParsedVerdict {
   return { ok: true, verdict: r.data };
 }
 
+export interface VetoExchange {
+  readonly exchange: ChatExchange;
+  readonly preflight: Preflight | undefined;
+  readonly review: LlmReview;
+}
+
 export interface VetoOptions {
   readonly clock?: () => number;
   /** Signature lookups wait this long between attempts (the serving node may not have it yet). */
   readonly signatureDelayMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
   /** Kept for the session: the last exchange and attestation, for the live test and the CLI. */
-  readonly onExchange?: (e: { exchange: ChatExchange; preflight: Preflight | undefined; review: LlmReview }) => void;
+  readonly onExchange?: (e: VetoExchange) => void;
 }
 
 /** The engine's `llm` dependency, backed by NEAR AI Cloud. */
