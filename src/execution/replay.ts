@@ -29,6 +29,7 @@ import {
   type TradeProposal,
 } from "../types.ts";
 import { MemoryKeys, type ExecutedKeys } from "./idempotency.ts";
+import { toBase, toHuman } from "./units.ts";
 
 const H = INTERVAL_MS["1h"];
 
@@ -36,13 +37,6 @@ export interface ReplayOptions {
   readonly slippageBps?: number;
   readonly quoteDelayMs?: number;
 }
-
-const toBase = (x: number, decimals: number): bigint => {
-  // 9 significant decimals then scale: exact enough for 24-decimal NEAR without float overflow of 10^24
-  const micro = BigInt(Math.round(x * 1e9));
-  return decimals >= 9 ? micro * 10n ** BigInt(decimals - 9) : micro / 10n ** BigInt(9 - decimals);
-};
-const toHuman = (v: bigint, decimals: number): number => Number(v) / 10 ** decimals;
 
 export class ReplayExecutor implements Executor {
   readonly mode = "replay" as const;
