@@ -18,7 +18,9 @@
     "demo": "node src/cli.ts demo",
     "verify": "node src/cli.ts verify",
     "status": "node src/cli.ts status",
-    "explorer": "node src/cli.ts explorer"
+    "explorer": "node src/cli.ts explorer",
+    "paper": "node src/cli.ts paper",
+    "live": "node src/cli.ts live"
   },
   "dependencies": {
     "canonicalize": "^5.1.0",

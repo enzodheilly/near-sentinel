@@ -3,11 +3,12 @@
  * (written after every tick or replay); falls back to the portfolio of the most recent record, and says so.
  */
 
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { defaultRiskConfig } from "../config/default.ts";
 import type { RiskConfig } from "../config/schema.ts";
 import type { DecisionRecord, PortfolioSnapshot } from "../types.ts";
+import { heartbeatAlert, readHeartbeat } from "../execution/watcher.ts";
 
 export interface SavedState {
   readonly savedAt: number;
@@ -17,7 +18,8 @@ export interface SavedState {
 
 export async function saveState(path: string, s: SavedState): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(s, null, 2)}\n`);
+  await writeFile(`${path}.tmp`, `${JSON.stringify(s, null, 2)}\n`);
+  await rename(`${path}.tmp`, path); // never a half-written state file
 }
 
 async function lastRecordState(records: string): Promise<SavedState | null> {
@@ -38,7 +40,7 @@ const usd = (x: number) => `$${x.toFixed(2)}`;
 const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(2)}%`;
 const iso = (t: number) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
 
-export async function runStatus(o: { statePath: string; records: string; write: (l: string) => void; cfg?: RiskConfig }): Promise<number> {
+export async function runStatus(o: { statePath: string; records: string; write: (l: string) => void; cfg?: RiskConfig; heartbeatPath?: string; now?: () => number }): Promise<number> {
   const cfg = o.cfg ?? defaultRiskConfig;
   let s: SavedState | null = null;
   try {
@@ -64,6 +66,11 @@ export async function runStatus(o: { statePath: string; records: string; write: 
   if (!p.positions.length) o.write("  positions none");
   for (const x of p.positions) {
     o.write(`  position ${x.asset} ${x.quantity} @ ${x.entryPrice} (since ${iso(x.entryBarTime)}) · stop ${x.stopPrice.toPrecision(6)} · TP1 ${x.takeProfit[0].toPrecision(6)}${x.tp1Hit ? " (hit)" : ""} · TP2 ${x.takeProfit[1].toPrecision(6)}`);
+  }
+  if (o.heartbeatPath) {
+    const alert = heartbeatAlert(await readHeartbeat(o.heartbeatPath), (o.now ?? Date.now)());
+    o.write(alert ? `  ALERT ${alert}` : "  watcher alive (heartbeat within 5 min)");
+    if (alert && p.positions.length) return 3;
   }
   return 0;
 }

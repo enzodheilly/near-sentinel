@@ -5,11 +5,14 @@
  *   verify <hash>... | --all  recompute records and check them; non-zero exit on any problem
  *   status                    positions, limits and today's PnL from the last recorded state
  *   explorer                  build explorer/dist/index.html from the records
+ *   paper                     run on the live market with dry quotes and simulated fills, until Ctrl+C
+ *   live                      refused until live execution through NEAR Intents lands (#47)
  */
 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDemo } from "./cli/demo.ts";
+import { paperPaths, runPaper } from "./cli/run.ts";
 import { runStatus } from "./cli/status.ts";
 import { runVerify } from "./cli/verify.ts";
 import { runExplorer } from "./explorer/build.ts";
@@ -25,6 +28,15 @@ const flag = (name: string, fallback: string) => {
 /** Positional arguments and bare flags, without the valued flags and their values. */
 const args = argv.filter((a, i) => !VALUED.has(a) && !VALUED.has(argv[i - 1] ?? ""));
 
+/** The local .env (never committed), when present: keys for 1Click and NEAR AI. */
+function loadEnv() {
+  try {
+    process.loadEnvFile(join(root, ".env"));
+  } catch {
+    // no .env: unauthenticated quotes and the LLM fallback, both announced at start
+  }
+}
+
 async function main(): Promise<number> {
   const out = flag("records", join(root, "records"));
   switch (cmd) {
@@ -35,9 +47,17 @@ async function main(): Promise<number> {
     case "explorer":
       return runExplorer({ root, records: out, write });
     case "status":
-      return runStatus({ statePath: join(root, "state", "portfolio.json"), records: out, write });
+      return args.includes("paper")
+        ? runStatus({ statePath: paperPaths(root).state, heartbeatPath: paperPaths(root).heartbeat, records: out, write })
+        : runStatus({ statePath: join(root, "state", "portfolio.json"), records: out, write });
+    case "paper":
+      loadEnv();
+      return runPaper({ root, env: process.env, write });
+    case "live":
+      write("live mode is not available yet: live execution through NEAR Intents is ticket #47. Use pnpm paper.");
+      return 2;
     default:
-      write("usage: pnpm demo | pnpm verify <hash>|--all | pnpm status | pnpm explorer");
+      write("usage: pnpm demo | pnpm verify <hash>|--all | pnpm status [paper] | pnpm explorer | pnpm paper");
       return cmd === undefined || cmd === "help" ? 0 : 2;
   }
 }

@@ -164,6 +164,8 @@ Two rules hold at every step:
 | `live` | Live OHLCV | Real quotes | NEAR Intents (signed intent, Intents balance) | Agent key, 1Click JWT, NEAR AI key | Real trades, small notional. |
 | `verify` | Decision record | — | — | None (reads chain) | Recompute a decision and compare with the anchored hash. |
 
+`pnpm paper` (`src/cli/run.ts`) runs the `paper` mode until Ctrl+C: one tick 15 s after each 1h close (a bar is never ticked twice, across restarts too), the price watcher every 60 s in between, one step at a time through a single queue. State lives in `state/paper/` (portfolio, paper balances, idempotency keys, heartbeat), candles in `data/candles/` (both git-ignored), decisions in `records/`. Ctrl+C lets the step in progress finish before exiting. `pnpm status paper` shows the paper portfolio and alerts when the heartbeat is older than 5 minutes. `pnpm live` is refused until live execution lands (#47).
+
 `replay` is the default for `pnpm demo`. When the network is available, `demo` also requests one real dry quote and prints it next to the fixture quote. If the request fails, it says so and continues.
 
 ## 8. Settlement design
