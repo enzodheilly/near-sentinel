@@ -256,6 +256,13 @@ export interface Externals {
   readonly calls: readonly ExternalCall[];
 }
 
+/** A price observed by the watcher between ticks. */
+export interface WatchTrigger {
+  readonly kind: "watcher";
+  readonly price: number;
+  readonly at: number;
+}
+
 export interface DecisionRecord {
   readonly version: 1;
   readonly agentVersion: string; // git commit
@@ -267,6 +274,8 @@ export interface DecisionRecord {
     readonly portfolio: PortfolioSnapshot; // state the decision was taken on (for exits: before this bar's exits)
     readonly now: number; // tick time (clock at the start of the tick)
     readonly externals: Externals;
+    /** Set when the price watcher, not a closed bar, triggered this exit (RISK_ENGINE.md §5.6). */
+    readonly trigger?: WatchTrigger;
   };
   readonly signals: readonly Signal[];
   readonly checks: readonly CheckResult[];

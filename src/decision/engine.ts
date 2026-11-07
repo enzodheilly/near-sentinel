@@ -39,13 +39,14 @@ import {
   type Signal,
   type TradableAsset,
   type TradeProposal,
+  type WatchTrigger,
 } from "../types.ts";
 import { executeOnce } from "../execution/executor.ts";
 import type { ExecutedKeys } from "../execution/idempotency.ts";
 import { quoteAndCheck, runChecks, type CheckContext, type CheckedQuote } from "./checks.ts";
 import { evaluateConvergence } from "./convergence.ts";
 import { costFilter } from "./costs.ts";
-import { manageExit } from "./exits.ts";
+import { manageExit, watchExit } from "./exits.ts";
 import { applyKillSwitch, entryGate, recordEntry, rollPortfolio, startCooldown, type SeriesFreshness } from "./limits.ts";
 import { equityUsd, placeStop, sizePosition, targets } from "./sizing.ts";
 
@@ -110,6 +111,8 @@ export interface Decision {
   readonly outcome: DecisionOutcome;
   /** Every answer received from outside the engine for this decision, in call order (for `verify`). */
   readonly externals: Externals;
+  /** Present on exits triggered by the price watcher between ticks. */
+  readonly trigger?: WatchTrigger;
 }
 
 export interface TickResult {
@@ -343,32 +346,9 @@ export async function runTick(input: TickInput, deps: EngineDeps, cfg: RiskConfi
       p = replacePosition(p, asset, plan.after);
       continue;
     }
-    let current: Position | null = p.positions.find((x) => x.asset === asset) ?? null;
-    for (const exit of plan.exits) {
-      const tape = taped(depsT, executed);
-      const checked = await quoteChecked(exit, tape.io, cfg);
-      const base = { asset, barTime, portfolio: before, now, signals: [], checks: checked.attempts.flatMap((x) => x.outcome.checks) };
-      if (!checked.outcome.ok) {
-        exitStuck ||= checked.exitStuck;
-        if (checked.exitStuck) alerts.push(`${asset} ${exit.reason} exit refused twice (${checked.outcome.reason}); entries paused, retrying every ${cfg.execution.watcherPollSec} s`);
-        await decide({ ...base, outcome: { action: "REJECT", reason: checked.outcome.reason, proposal: exit }, externals: tape.externals() });
-        break; // the position stays as it was; the next tick or the watcher tries again
-      }
-      await decide({ ...base, outcome: { action: "TRADE", proposal: exit }, externals: tape.externals() });
-      const report = await fill(exit, checked.quote);
-      if (!report.fill) {
-        exitStuck = true;
-        alerts.push(`${asset} ${exit.reason} exit did not fill (${report.status}${report.error ? `: ${report.error}` : ""})`);
-        break;
-      }
-      p = applyExitFill(p, exit, report, cfg);
-      // last exit of the bar → the state computed by the exit machine; TP1 alone (TP2 refused) → the rest,
-      // with TP1 marked and the stop at least at breakeven
-      const c = current as Position;
-      current = exit === plan.exits.at(-1) ? plan.after : { ...c, quantity: c.quantity - exit.quantity, tp1Hit: true, stopPrice: Math.max(c.stopPrice, c.entryPrice) };
-      p = replacePosition(p, asset, current);
-      if (exit.reason === "STOP") p = startCooldown(p, asset, barTime, cfg.limits);
-    }
+    const r = await executeExits({ p, before, asset, barTime, now, plan, executed, deps: depsT, decide, fill, alerts }, cfg);
+    p = r.portfolio;
+    exitStuck ||= r.stuck;
   }
 
   // ---------------------------------------------------------------- 4. portfolio limits
@@ -399,6 +379,96 @@ export async function runTick(input: TickInput, deps: EngineDeps, cfg: RiskConfi
 }
 
 // ---------------------------------------------------------------- helpers
+
+interface ExitRun {
+  readonly p: PortfolioSnapshot;
+  readonly before: PortfolioSnapshot;
+  readonly asset: TradableAsset;
+  readonly barTime: number;
+  readonly now: number;
+  readonly plan: { readonly exits: readonly ExitProposal[]; readonly after: Position | null };
+  readonly executed: ExecutedKeys;
+  readonly deps: EngineDeps & { readonly llmTimeoutMs: number };
+  readonly decide: (d: Decision) => Promise<void>;
+  readonly fill: (proposal: TradeProposal, q: Quote) => Promise<ExecutionReport>;
+  readonly alerts: string[];
+  readonly trigger?: WatchTrigger;
+}
+
+/** Quotes, checks, records and executes one asset's exits in order; shared by the tick and the watcher. */
+async function executeExits(x: ExitRun, cfg: RiskConfig): Promise<{ portfolio: PortfolioSnapshot; stuck: boolean }> {
+  const { asset, barTime, now, plan, before, alerts } = x;
+  let p = x.p;
+  let current: Position | null = p.positions.find((y) => y.asset === asset) ?? null;
+  for (const exit of plan.exits) {
+    const tape = taped(x.deps, x.executed);
+    const checked = await quoteChecked(exit, tape.io, cfg);
+    const base = { asset, barTime, portfolio: before, now, signals: [], checks: checked.attempts.flatMap((a) => a.outcome.checks), ...(x.trigger ? { trigger: x.trigger } : {}) };
+    if (!checked.outcome.ok) {
+      if (checked.exitStuck) alerts.push(`${asset} ${exit.reason} exit refused twice (${checked.outcome.reason}); entries paused, retrying every ${cfg.execution.watcherPollSec} s`);
+      await x.decide({ ...base, outcome: { action: "REJECT", reason: checked.outcome.reason, proposal: exit }, externals: tape.externals() });
+      return { portfolio: p, stuck: checked.exitStuck }; // the position stays as it was; the next tick or the watcher tries again
+    }
+    await x.decide({ ...base, outcome: { action: "TRADE", proposal: exit }, externals: tape.externals() });
+    const report = await x.fill(exit, checked.quote);
+    if (!report.fill) {
+      alerts.push(`${asset} ${exit.reason} exit did not fill (${report.status}${report.error ? `: ${report.error}` : ""})`);
+      return { portfolio: p, stuck: true };
+    }
+    p = applyExitFill(p, exit, report, cfg);
+    // last exit → the state computed by the exit machine; TP1 alone (TP2 refused) → the rest,
+    // with TP1 marked and the stop at least at breakeven
+    const c = current as Position;
+    current = exit === plan.exits.at(-1) ? plan.after : { ...c, quantity: c.quantity - exit.quantity, tp1Hit: true, stopPrice: Math.max(c.stopPrice, c.entryPrice) };
+    p = replacePosition(p, asset, current);
+    if (exit.reason === "STOP") p = startCooldown(p, asset, exit.barTime, cfg.limits);
+  }
+  return { portfolio: p, stuck: false };
+}
+
+export interface WatchInput {
+  /** Last closed 1h bar (the candle windows referenced by the records). */
+  readonly barTime: number;
+  readonly market: TickMarket;
+  readonly portfolio: PortfolioSnapshot;
+  /** Reference prices observed by the watcher. */
+  readonly prices: Partial<Record<TradableAsset, number>>;
+  readonly at: number;
+  readonly executed: ExecutedKeys;
+}
+
+/**
+ * The price watcher's step (RISK_ENGINE.md §5.6): for each open position, a breached stop or target is exited
+ * now, through the same quote, checks, record and execution path as a tick. No entry is ever taken here.
+ */
+export async function runWatch(input: WatchInput, deps: EngineDeps, cfg: RiskConfig): Promise<TickResult> {
+  const decisions: Decision[] = [];
+  const executions: { proposal: TradeProposal; report: ExecutionReport }[] = [];
+  const alerts: string[] = [];
+  const now = deps.clock();
+  const depsT = { ...deps, llmTimeoutMs: deps.llmTimeoutMs ?? cfg.llm.timeoutMs };
+  const decide = async (d: Decision) => {
+    decisions.push(d);
+    await deps.onDecision?.(d);
+  };
+  const fill = async (proposal: TradeProposal, q: Quote): Promise<ExecutionReport> => {
+    const report = await executeOnce({ execute: deps.execute }, input.executed, proposal, q);
+    executions.push({ proposal, report });
+    return report;
+  };
+  let p = input.portfolio;
+  for (const asset of ASSET_ORDER) {
+    const pos = p.positions.find((x) => x.asset === asset && x.quantity > 0);
+    const price = input.prices[asset];
+    if (!pos || price === undefined) continue;
+    const step = watchExit(pos, price, input.at, cfg.exits);
+    if (!step) continue;
+    const trigger: WatchTrigger = { kind: "watcher", price, at: input.at };
+    const r = await executeExits({ p, before: p, asset, barTime: input.barTime, now, plan: { exits: step.exits, after: step.position }, executed: input.executed, deps: depsT, decide, fill, alerts, trigger }, cfg);
+    p = r.portfolio;
+  }
+  return { portfolio: p, decisions, executions, alerts, pauseContract: false };
+}
 
 function symbolOf(assetId: string, cfg: RiskConfig): AssetSymbol {
   const hit = (Object.entries(cfg.assets) as [AssetSymbol, { assetId: string }][]).find(([, a]) => a.assetId === assetId);

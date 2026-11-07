@@ -50,7 +50,7 @@ export function buildRecord(d: Decision, candles: readonly CandleWindowRef[], me
     configHash: meta.configHash,
     asset: d.asset,
     barTime: d.barTime,
-    inputs: { candles, portfolio: d.portfolio, now: d.now, externals: d.externals },
+    inputs: { candles, portfolio: d.portfolio, now: d.now, externals: d.externals, ...(d.trigger ? { trigger: d.trigger } : {}) },
     signals: d.signals,
     checks: d.checks,
     ...(d.llm ? { llm: d.llm } : {}),
