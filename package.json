@@ -20,7 +20,9 @@
     "status": "node src/cli.ts status",
     "explorer": "node src/cli.ts explorer",
     "paper": "node src/cli.ts paper",
-    "live": "node src/cli.ts live"
+    "live": "node src/cli.ts live",
+    "contract:build": "cd contracts/guardrail && cargo near build non-reproducible-wasm --no-abi",
+    "contract:test": "cargo test --manifest-path contracts/guardrail/Cargo.toml"
   },
   "dependencies": {
     "canonicalize": "^5.1.0",
@@ -29,6 +31,7 @@
   "devDependencies": {
     "@types/node": "^22.20.5",
     "fast-check": "^4.10.2",
+    "near-kit": "0.20.2",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }
