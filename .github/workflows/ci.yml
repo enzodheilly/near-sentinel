@@ -26,6 +26,34 @@ jobs:
       - run: pnpm test
       - run: pnpm test:types
 
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts/guardrail
+      - name: Install cargo-near
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/download/cargo-near-v0.23.0/cargo-near-installer.sh | sh
+      - name: Contract unit tests
+        run: pnpm contract:test
+      - name: Build the contract wasm
+        run: pnpm contract:build
+      # near-kit downloads the sandbox binary to a temp dir then renames it under $HOME: keep both on one disk
+      - name: Contract tests in a NEAR sandbox
+        run: |
+          mkdir -p "$HOME/.cache/tmp"
+          TMPDIR="$HOME/.cache/tmp" SANDBOX=1 pnpm vitest run test/contract
+
   secrets:
     runs-on: ubuntu-latest
     steps:
