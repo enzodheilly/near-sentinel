@@ -219,6 +219,10 @@ pub struct Policy {
 | `unpause()`, `set_policy(..)` | owner | Policy changes. |
 | `get_decision(hash)`, `get_policy()`, `get_day_usage()` | anyone | Views used by `verify` and by judges. |
 
+### 9.2b Anchoring (`src/execution/anchor.ts`)
+
+The recorder's anchor hook calls `record_decision(hash, kind)` as the agent and awaits it before the engine executes anything: if anchoring fails (RPC down, contract paused for a TRADE, daily cap reached), the tick aborts, nothing is executed, and the bar is retried. `pnpm verify <hash> --anchor <contract> --network testnet|mainnet` checks the hash is on chain with the same kind.
+
 ### 9.3 What the contract can and cannot enforce
 
 The contract has no price oracle, so it enforces limits in **token units**, not dollars.

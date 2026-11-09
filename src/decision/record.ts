@@ -95,7 +95,7 @@ export async function readRecord(dir: string, hash: string): Promise<DecisionRec
  * An `onDecision` sink for the engine: builds, hashes and writes each record before its trade executes.
  * `anchor`, when given (live mode), is awaited too, so a trade never executes before its hash is on-chain.
  */
-export function recorder(dir: string, market: TickMarket, meta: RecordMeta, anchor?: (hash: string) => Promise<void>) {
+export function recorder(dir: string, market: TickMarket, meta: RecordMeta, anchor?: (hash: string, kind: DecisionRecord["outcome"]["action"]) => Promise<void>) {
   const hashes: string[] = [];
   const cache = new Map<string, CandleWindowRef[]>();
   const sink = async (d: Decision): Promise<void> => {
@@ -104,7 +104,7 @@ export function recorder(dir: string, market: TickMarket, meta: RecordMeta, anch
     if (!refs) cache.set(key, (refs = decisionWindows(market, d.asset, d.barTime)));
     const hash = await writeRecord(dir, buildRecord(d, refs, meta));
     hashes.push(hash);
-    if (anchor) await anchor(hash);
+    if (anchor) await anchor(hash, d.outcome.action); // throws → the engine stops before executing
   };
   return { sink, hashes };
 }

@@ -12,7 +12,7 @@ import { defaultRiskConfig } from "../config/default.ts";
 import { configHash, type RiskConfig } from "../config/schema.ts";
 import { loadFixtureSet, type FixtureSet } from "../data/fixtures.ts";
 import { readRecord } from "../decision/record.ts";
-import { verifyRecord } from "../decision/verify.ts";
+import { verifyRecord, type VerifyContext } from "../decision/verify.ts";
 import type { Candle, DecisionRecord, Interval } from "../types.ts";
 
 export interface VerifyCliOptions {
@@ -21,6 +21,8 @@ export interface VerifyCliOptions {
   readonly args: readonly string[];
   readonly write: (line: string) => void;
   readonly configs?: ReadonlyMap<string, RiskConfig>;
+  /** On-chain lookup in the guardrail contract (`--anchor <contract> --network testnet|mainnet`). */
+  readonly anchored?: VerifyContext["anchored"];
 }
 
 export async function loadAllFixtures(root: string): Promise<FixtureSet[]> {
@@ -97,7 +99,7 @@ export async function runVerify(o: VerifyCliOptions): Promise<number> {
       continue;
     }
     const src = candleSourceFor(rec, sets);
-    const res = await verifyRecord(rec, { configs, candles: src.candles, expectedHash: h });
+    const res = await verifyRecord(rec, { configs, candles: src.candles, expectedHash: h, ...(o.anchored ? { anchored: o.anchored } : {}) });
     const what = `${rec.asset} ${new Date(rec.barTime).toISOString().slice(0, 16).replace("T", " ")} ${rec.outcome.action}${"reason" in rec.outcome ? ` ${rec.outcome.reason}` : ""}`;
     if (!res.ok) {
       bad++;
@@ -114,7 +116,7 @@ export async function runVerify(o: VerifyCliOptions): Promise<number> {
     o.write(`    recomputed: same signals, checks and outcome, byte for byte`);
     for (const n of res.notes) o.write(`    note: ${n}`);
     o.write(`    LLM signature: ${rec.llm?.signature ? `checked (${rec.llm.signatureKind}, recorded ${rec.llm.attestation?.status ?? "without status"})` : rec.llm ? "none" : "no LLM stage in this decision"}`);
-    o.write(`    on-chain anchor: not checked yet (contract lands in Sprint 5)`);
+    if (!o.anchored) o.write(`    on-chain anchor: not checked (add --anchor <guardrail contract> --network testnet|mainnet)`);
   }
   if (all || hashes.length > 1) o.write(`${bad ? "✗" : "✓"} ${good} of ${good + bad} record(s) verified${bad ? `, ${bad} failed` : ""}`);
   return bad ? 1 : 0;
