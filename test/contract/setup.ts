@@ -30,16 +30,17 @@ export async function startGuardrail(init: Record<string, unknown> = {}): Promis
   const root = sandbox.rootAccount;
   const pub = parseKey(root.secretKey).publicKey.toString();
   const ids = { contract: `guardrail.${root.id}`, owner: `owner.${root.id}`, agent: `agent.${root.id}`, stranger: `stranger.${root.id}` };
-  const boot = new Near({ network: sandbox, keyStore: { [root.id]: root.secretKey } });
+  // views read final state: wait for finality so a view right after a call sees it
+  const boot = new Near({ network: sandbox, keyStore: { [root.id]: root.secretKey }, defaultWaitUntil: "FINAL" });
   for (const id of Object.values(ids)) {
-    await boot.transaction(root.id).createAccount(id).transfer(id, "20 NEAR").addKey(pub, { type: "fullAccess" }).send();
+    await boot.transaction(root.id).createAccount(id).transfer(id, "20 NEAR").addKey(pub, { type: "fullAccess" }).send({ waitUntil: "FINAL" });
   }
-  const near = new Near({ network: sandbox, keyStore: Object.fromEntries([root.id, ...Object.values(ids)].map((id) => [id, root.secretKey])) });
+  const near = new Near({ network: sandbox, keyStore: Object.fromEntries([root.id, ...Object.values(ids)].map((id) => [id, root.secretKey])), defaultWaitUntil: "FINAL" });
   await near
     .transaction(ids.contract)
     .deployContract(ids.contract, readFileSync(WASM))
     .functionCall(ids.contract, "new", { owner: ids.owner, agent: ids.agent, max_trades_per_day: 3, ...init }, { gas: "100 Tgas" })
-    .send();
+    .send({ waitUntil: "FINAL" });
   return {
     sandbox, near, ...ids,
     call: <T>(signer: string, method: string, args: object = {}) => near.call<T>(ids.contract, method, args, { signerId: signer, gas: "100 Tgas" }),
