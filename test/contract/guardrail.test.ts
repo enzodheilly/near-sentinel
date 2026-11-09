@@ -4,7 +4,7 @@ import { sandboxEnabled, startGuardrail, type Guardrail } from "./setup.ts";
 
 const h = (s: string) => createHash("sha256").update(s).digest("hex");
 
-describe.skipIf(!sandboxEnabled)("guardrail contract (sandbox)", () => {
+describe.skipIf(!sandboxEnabled)("guardrail contract (sandbox)", { timeout: 60_000 }, () => {
   let g: Guardrail;
   beforeAll(async () => {
     g = await startGuardrail({ max_trades_per_day: 2 });

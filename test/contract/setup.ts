@@ -25,6 +25,13 @@ export interface Guardrail {
   stop(): Promise<void>;
 }
 
+/** The JSON a call returned: near-kit hands back the execution outcome (`status.SuccessValue`, base64). */
+export function returnValue<T>(outcome: unknown): T {
+  const v = (outcome as { status?: { SuccessValue?: string } }).status?.SuccessValue ?? "";
+  const text = Buffer.from(v, "base64").toString("utf8");
+  return (text === "" ? undefined : JSON.parse(text)) as T;
+}
+
 export async function startGuardrail(init: Record<string, unknown> = {}): Promise<Guardrail> {
   const sandbox = await Sandbox.start({ detached: false });
   const root = sandbox.rootAccount;
@@ -43,7 +50,7 @@ export async function startGuardrail(init: Record<string, unknown> = {}): Promis
     .send({ waitUntil: "FINAL" });
   return {
     sandbox, near, ...ids,
-    call: <T>(signer: string, method: string, args: object = {}) => near.call<T>(ids.contract, method, args, { signerId: signer, gas: "100 Tgas" }),
+    call: async <T>(signer: string, method: string, args: object = {}) => returnValue<T>(await near.call<unknown>(ids.contract, method, args, { signerId: signer, gas: "100 Tgas" })),
     view: async <T>(method: string, args: object = {}) => (await near.view<T>(ids.contract, method, args)) as T,
     stop: () => sandbox.stop(),
   };
