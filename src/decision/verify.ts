@@ -29,6 +29,8 @@ export interface VerifyContext {
   readonly candles: (symbol: string, interval: Interval) => readonly Candle[] | undefined;
   /** Hash the record is expected to have (file name or on-chain anchor). */
   readonly expectedHash?: string;
+  /** On-chain lookup of the hash in the guardrail contract (live records must be anchored). */
+  readonly anchored?: (hash: string) => Promise<{ readonly kind: string; readonly recorded_at_ms: number; readonly seq: number } | null>;
 }
 
 export interface VerifyResult {
@@ -106,6 +108,17 @@ export async function verifyRecord(rec: DecisionRecord, ctx: VerifyContext): Pro
   const b = JSON.parse(canonicalJson(rebuilt)) as unknown;
   const diff = firstDifference(a, b, "");
   if (diff) problems.push(`recomputed decision differs at ${diff.path || "(root)"}: record has ${show(diff.a)}, recomputation gives ${show(diff.b)}`);
+  if (ctx.anchored) {
+    let entry: Awaited<ReturnType<NonNullable<VerifyContext["anchored"]>>> = null;
+    try {
+      entry = await ctx.anchored(hash);
+    } catch (e) {
+      problems.push(`anchor: lookup failed (${e instanceof Error ? e.message : String(e)})`);
+    }
+    if (entry === null && !problems.some((x) => x.startsWith("anchor:"))) problems.push("anchor: this hash is not recorded in the guardrail contract");
+    else if (entry && entry.kind !== rec.outcome.action) problems.push(`anchor: recorded on chain as ${entry.kind}, the record says ${rec.outcome.action}`);
+    else if (entry) notes.push(`anchor: on chain as decision #${entry.seq}, ${entry.kind}, at ${new Date(entry.recorded_at_ms).toISOString()}`);
+  }
   if (rec.llm) {
     const llm = recheckReview(rec.llm);
     problems.push(...llm.problems);

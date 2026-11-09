@@ -50,3 +50,25 @@ describe.skipIf(!sandboxEnabled)("guardrail contract (sandbox)", { timeout: 60_0
     expect(await g.view("get_policy")).toMatchObject({ max_trades_per_day: 4, agent: g.agent });
   });
 });
+
+describe.skipIf(!sandboxEnabled)("anchoring against the deployed contract (sandbox)", { timeout: 60_000 }, () => {
+  let g: Guardrail;
+  beforeAll(async () => {
+    g = await startGuardrail({ max_trades_per_day: 5 });
+  }, 180_000);
+  afterAll(async () => {
+    await g?.stop();
+  });
+
+  it("a hash anchored by the agent is then found; a paused contract refuses a TRADE anchor", async () => {
+    const { ContractAnchor, AnchorError } = await import("../../src/execution/anchor.ts");
+    const a = new ContractAnchor({ near: g.near as never, contractId: g.contract, agentId: g.agent });
+    const hash = h("anchored-decision");
+    expect(await a.record(hash, "TRADE")).toBe(1);
+    expect(await a.lookup(hash)).toMatchObject({ hash, kind: "TRADE", seq: 1 });
+    expect(await a.lookup(h("unknown"))).toBeNull();
+    await g.call(g.owner, "pause");
+    await expect(a.record(h("while-paused"), "TRADE")).rejects.toBeInstanceOf(AnchorError);
+    expect(await a.record(h("refusal-while-paused"), "REJECT")).toBe(2);
+  });
+});

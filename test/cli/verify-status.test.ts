@@ -41,7 +41,7 @@ describe("pnpm verify", () => {
     expect(r.out).toMatch(/candles: NEARUSDT 1h \(201\), BTCUSDT 1h \(201\), BTCUSDT 4h \(159\) match demo-entry/);
     expect(r.out).toMatch(/LLM signature: none/);
     expect(r.out).toMatch(/note: llm: no model call to check/);
-    expect(r.out).toMatch(/on-chain anchor: not checked yet/);
+    expect(r.out).toMatch(/on-chain anchor: not checked \(add --anchor/);
   });
 
   it("a tampered record: readable message and a non-zero exit code", async () => {

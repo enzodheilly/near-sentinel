@@ -19,6 +19,7 @@ import { runTick, runWatch, type EngineDeps, type TickMarket } from "../decision
 import { recorder, type RecordMeta } from "../decision/record.ts";
 import type { ExecutedKeys } from "../execution/idempotency.ts";
 import type { HeartbeatSink } from "../execution/watcher.ts";
+import { anchorHook, type Anchor } from "../execution/anchor.ts";
 import { PriceWatcher } from "../execution/watcher.ts";
 import { INTERVAL_MS, type Executor, type PortfolioSnapshot, type TradableAsset } from "../types.ts";
 import { readFile } from "node:fs/promises";
@@ -50,6 +51,8 @@ export interface RunnerOptions {
   readonly recordsDir: string;
   readonly statePath: string;
   readonly mode: "paper";
+  /** On-chain anchoring of each decision hash before its trade (mandatory in live mode, optional in paper). */
+  readonly anchor?: Anchor;
   readonly clock?: () => number;
   /** Delay after the candle close before ticking (the source must have the final bar). */
   readonly tickDelayMs?: number;
@@ -153,7 +156,7 @@ export class Runner {
   }
 
   private deps(market: TickMarket): { deps: EngineDeps; hashes: string[] } {
-    const rec = recorder(this.o.recordsDir, market, this.o.meta);
+    const rec = recorder(this.o.recordsDir, market, this.o.meta, this.o.anchor ? anchorHook(this.o.anchor) : undefined);
     const x = this.o.executor;
     return {
       hashes: rec.hashes,
@@ -178,7 +181,14 @@ export class Runner {
     this.marketBar = snap.barTime;
     if (snap.barTime === undefined || (this.lastBarTime !== undefined && snap.barTime <= this.lastBarTime)) return;
     const { deps, hashes } = this.deps(snap.market);
-    const r = await runTick({ barTime: snap.barTime, market: snap.market, portfolio: this.portfolio, executed: this.o.keys }, deps, this.o.cfg);
+    let r: Awaited<ReturnType<typeof runTick>>;
+    try {
+      r = await runTick({ barTime: snap.barTime, market: snap.market, portfolio: this.portfolio, executed: this.o.keys }, deps, this.o.cfg);
+    } catch (e) {
+      // e.g. anchoring failed: the decision was not executed; the portfolio is unchanged, the next tick retries
+      this.write(`ALERT tick aborted before execution: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
     this.portfolio = r.portfolio;
     this.lastBarTime = snap.barTime;
     await this.save();
