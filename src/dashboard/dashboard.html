@@ -5,105 +5,180 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NEAR Sentinel — Live</title>
 <meta name="description" content="Local, read-only live view of the NEAR Sentinel agent.">
+<link rel="icon" href="/assets/near-logo.png">
 <style>
+@font-face { font-family: "Chakra Petch"; src: url(/fonts/chakra-500.woff2) format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Chakra Petch"; src: url(/fonts/chakra-600.woff2) format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; src: url(/fonts/plex-400.woff2) format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; src: url(/fonts/plex-500.woff2) format("woff2"); font-weight: 500; font-display: swap; }
 :root {
-  --bg: #0a0d0c; --surface: #111614; --surface-2: #172019; --line: #24302a; --text: #e6eee8; --muted: #8b9a91; --faint: #5d6b63;
-  --mint: #5cf0b2; --mint-ink: #04160e; --amber: #ffb54a; --red: #ff6b6b; --blue: #8ab4ff;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ink: #060b10; --hull: #0b141c; --hull-2: #101c26; --seam: #1a2833; --seam-2: #243645;
+  --near: #00ec97; --near-dim: #0f5e45; --amber: #ffb547; --fault: #ff5d5d;
+  --text: #e6f0ec; --dim: #7c8e97; --faint: #4f616b;
+  --display: "Chakra Petch", "IBM Plex Sans", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cut: 14px;
   color-scheme: dark;
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #f5f6f2; --surface: #ffffff; --surface-2: #eef1ec; --line: #dbe1da; --text: #121a15; --muted: #59675e; --faint: #8a968e;
-    --mint: #0a8f5f; --mint-ink: #ffffff; --amber: #a86400; --red: #c43c3c; --blue: #2f5fb3; color-scheme: light;
-  }
-}
-:root[data-theme="light"] {
-  --bg: #f5f6f2; --surface: #ffffff; --surface-2: #eef1ec; --line: #dbe1da; --text: #121a15; --muted: #59675e; --faint: #8a968e;
-  --mint: #0a8f5f; --mint-ink: #ffffff; --amber: #a86400; --red: #c43c3c; --blue: #2f5fb3; color-scheme: light;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); }
-.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 56px; }
-header { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
-.brand { display: flex; gap: 12px; align-items: center; }
-.mark { width: 34px; height: 34px; border-radius: 9px; background: var(--mint); display: grid; place-items: center; flex: none; }
-.mark svg { width: 20px; height: 20px; }
-h1 { font-size: 18px; margin: 0; }
-h1 small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
-.right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font: 12px var(--mono); color: var(--muted); }
-.pulse { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; background: var(--surface); font: 600 12px var(--sans); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
-.dot.on { background: var(--mint); box-shadow: 0 0 0 0 color-mix(in srgb, var(--mint) 60%, transparent); animation: ping 2s infinite; }
-.dot.warn { background: var(--amber); } .dot.bad { background: var(--red); }
-@keyframes ping { 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
-@media (prefers-reduced-motion: reduce) { .dot.on { animation: none; } }
-button.theme { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 5px 10px; cursor: pointer; font: 12px var(--sans); color: inherit; }
-.lede { color: var(--muted); margin: 16px 0 14px; max-width: 780px; }
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
-.kpi .k { font-size: 12px; color: var(--muted); }
-.kpi .v { font: 600 21px/1.3 var(--sans); margin-top: 2px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.kpi .s { font-size: 12px; color: var(--faint); margin-top: 2px; overflow-wrap: anywhere; }
-.ok { color: var(--mint); } .warn { color: var(--amber); } .bad { color: var(--red); }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-bottom: 14px; }
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-width: 0; }
-.panel h2 { font-size: 14px; margin: 0 0 10px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
-.panel h2 > span { font-weight: 400; color: var(--muted); font-size: 12px; }
-dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 13px; }
-dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.mono { font: 12px var(--mono); }
-.tag { display: inline-block; font: 600 11px/1 var(--sans); letter-spacing: 0.04em; padding: 4px 7px; border-radius: 6px; }
-.tag.t-on { background: var(--mint); color: var(--mint-ink); } .tag.t-off { background: var(--surface-2); color: var(--muted); }
-.t-warn { background: color-mix(in srgb, var(--amber) 22%, transparent); color: var(--amber); }
-.t-bad { background: color-mix(in srgb, var(--red) 20%, transparent); color: var(--red); }
-.tablewrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
-th { color: var(--muted); font-weight: 500; font-size: 12px; border-top: 0; white-space: nowrap; }
-td.when { font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
-td.hash { font: 11px var(--mono); color: var(--faint); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.b-trade { background: var(--mint); color: var(--mint-ink); } .b-reject { background: color-mix(in srgb, var(--amber) 22%, transparent); color: var(--amber); } .b-hold { background: var(--surface-2); color: var(--muted); }
-.filters { display: flex; gap: 6px; flex-wrap: wrap; }
-.filters button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 10px; cursor: pointer; font: 12px var(--sans); color: inherit; }
-.filters button[aria-pressed="true"] { background: var(--mint); color: var(--mint-ink); border-color: var(--mint); }
-.empty { color: var(--faint); font-size: 13px; padding: 8px 0; }
-.err { color: var(--red); font: 12px var(--mono); }
-footer { color: var(--faint); font-size: 12px; margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
-a { color: var(--blue); }
+body {
+  margin: 0; color: var(--text); font: 15px/1.55 var(--body); background: var(--ink);
+  background-image:
+    radial-gradient(1200px 600px at 20% -10%, rgba(0, 236, 151, 0.07), transparent 60%),
+    linear-gradient(rgba(124, 142, 151, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 142, 151, 0.05) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+  min-height: 100vh;
+}
+a { color: var(--near); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--near); outline-offset: 2px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 18px 16px 56px; }
+
+/* top bar */
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand img { width: 30px; height: 30px; border-radius: 7px; display: block; }
+.brand b { font: 600 19px/1 var(--display); letter-spacing: 0.02em; }
+.brand span { display: block; font-size: 12.5px; color: var(--dim); margin-top: 3px; }
+.state { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--dim); }
+.lamp { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+.lamp.on { background: var(--near); box-shadow: 0 0 12px var(--near); }
+.lamp.off { background: var(--fault); box-shadow: 0 0 10px rgba(255, 93, 93, 0.6); }
+.lamp.wait { background: var(--amber); }
+
+/* hero: the scan bay */
+.bay {
+  margin-top: 18px; position: relative; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  background: linear-gradient(180deg, var(--hull-2), var(--hull)); border: 1px solid var(--seam);
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+}
+.pod { position: relative; min-height: 420px; border-right: 1px solid var(--seam); overflow: hidden; }
+.pod canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.pod .fallback { position: absolute; inset: 0; display: none; place-items: center; }
+.pod .fallback img { width: 120px; border-radius: 20px; opacity: 0.9; }
+.pod::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 34%; background: linear-gradient(0deg, transparent, rgba(16, 28, 38, 0.9) 60%); pointer-events: none; }
+.pod .caption { position: absolute; left: 20px; right: 20px; top: 18px; z-index: 1; }
+.pod h1 { font: 600 clamp(24px, 3.1vw, 34px)/1.1 var(--display); margin: 0; letter-spacing: 0.01em; }
+.pod p { margin: 6px 0 0; color: var(--dim); font-size: 14px; max-width: 34ch; }
+.scan { padding: 18px 18px 16px; display: grid; grid-template-columns: minmax(0, 1fr) 236px; gap: 18px; min-width: 0; }
+.scan h2 { grid-column: 1 / -1; margin: 0; font: 500 15px/1.3 var(--display); color: var(--dim); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.scan h2 strong { color: var(--text); font-weight: 600; }
+.chart { position: relative; min-height: 300px; min-width: 0; }
+.chart svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.chart text { font: 11px var(--body); fill: var(--faint); }
+.beam { position: absolute; top: 0; bottom: 22px; width: 90px; left: 0; pointer-events: none; opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(0, 236, 151, 0.04) 55%, rgba(0, 236, 151, 0.22) 96%, var(--near) 100%); }
+.gates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.gate { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--seam); background: rgba(6, 11, 16, 0.5); transition: border-color 0.25s, background 0.25s; }
+.gate i { width: 10px; height: 10px; border: 1.5px solid var(--faint); transform: rotate(45deg); justify-self: center; transition: all 0.25s; }
+.gate b { font: 500 14px/1.2 var(--display); display: block; }
+.gate small { display: block; color: var(--faint); font-size: 12px; line-height: 1.3; }
+.gate.pass { border-color: var(--near-dim); } .gate.pass i { background: var(--near); border-color: var(--near); box-shadow: 0 0 10px var(--near); }
+.gate.fail { border-color: rgba(255, 181, 71, 0.45); background: rgba(255, 181, 71, 0.06); } .gate.fail i { background: var(--amber); border-color: var(--amber); }
+.gate.skip b { color: var(--faint); }
+.verdict { margin-top: 4px; padding: 12px; border: 1px solid var(--seam-2); opacity: 0.25; transition: opacity 0.35s; }
+.verdict.shown { opacity: 1; }
+.verdict b { font: 600 20px/1.15 var(--display); display: block; }
+.verdict small { color: var(--dim); font-size: 12.5px; }
+.verdict.hold b { color: var(--text); } .verdict.reject b { color: var(--amber); } .verdict.trade b { color: var(--near); }
+
+/* instrument strip */
+.strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--seam); border-top: 0; background: var(--hull); }
+.gauge { padding: 14px 16px; min-width: 0; border-left: 1px solid var(--seam); }
+.gauge:first-child { border-left: 0; }
+.gauge span { font-size: 12.5px; color: var(--dim); display: block; }
+.gauge strong { font: 600 24px/1.25 var(--display); display: block; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.gauge small { font-size: 12px; color: var(--faint); display: block; overflow-wrap: anywhere; }
+.good { color: var(--near); } .warn { color: var(--amber); } .bad { color: var(--fault); }
+
+/* panels */
+.row2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.panel { background: var(--hull); border: 1px solid var(--seam); padding: 16px; min-width: 0;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); }
+.panel h3 { margin: 0 0 12px; font: 600 16px/1.2 var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.panel h3 em { font: 400 12.5px var(--body); color: var(--dim); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 500 12px/1 var(--body); padding: 5px 9px; border: 1px solid var(--seam-2); color: var(--dim); }
+.chip.on { color: var(--near); border-color: var(--near-dim); } .chip.off { color: var(--fault); border-color: rgba(255, 93, 93, 0.4); }
+dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 7px 16px; margin: 0; font-size: 14px; }
+dt { color: var(--dim); } dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.addr { font-size: 13px; color: var(--text); }
+.quiet { color: var(--dim); font-size: 14px; margin: 0; }
+
+/* log */
+.log { margin-top: 14px; }
+.tools { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.tools button { font: 500 13px var(--body); color: var(--dim); background: transparent; border: 1px solid var(--seam); padding: 6px 12px; cursor: pointer; }
+.tools button[aria-pressed="true"] { color: var(--ink); background: var(--near); border-color: var(--near); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font: 500 12.5px var(--body); color: var(--dim); padding: 8px; border-bottom: 1px solid var(--seam-2); white-space: nowrap; }
+td { padding: 9px 8px; border-bottom: 1px solid var(--seam); vertical-align: top; }
+td.t { color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+td.h { color: var(--faint); font-size: 12px; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.out { display: inline-flex; align-items: center; gap: 8px; font: 600 13px var(--display); white-space: nowrap; }
+.out::before { content: ""; width: 7px; height: 7px; transform: rotate(45deg); background: var(--faint); }
+.out.trade { color: var(--near); } .out.trade::before { background: var(--near); }
+.out.reject { color: var(--amber); } .out.reject::before { background: var(--amber); }
+.out.hold { color: var(--dim); }
+footer { margin-top: 18px; color: var(--faint); font-size: 12.5px; }
+.offline { color: var(--amber); }
+
+@media (max-width: 1020px) {
+  .bay { grid-template-columns: minmax(0, 1fr); }
+  .pod { min-height: 380px; border-right: 0; border-bottom: 1px solid var(--seam); }
+  .gauge:last-child:nth-child(odd) { grid-column: span 2; }
+  .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gauge { border-left: 0; border-top: 1px solid var(--seam); }
+  .gauge:nth-child(-n+2) { border-top: 0; }
+  .gauge:nth-child(even) { border-left: 1px solid var(--seam); }
+}
+@media (max-width: 720px) {
+  .scan { grid-template-columns: minmax(0, 1fr); }
+  .chart { min-height: 220px; }
+  .row2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .beam { display: none; } .gate, .gate i, .verdict { transition: none; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <div class="brand">
-      <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--mint-ink)"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></div>
-      <h1>NEAR Sentinel <small>Live agent · read-only</small></h1>
-    </div>
-    <div class="right">
-      <span class="pulse"><i class="dot" id="pulse-dot"></i><span id="pulse-text">connecting…</span></span>
-      <span id="updated"></span>
-      <button class="theme" id="theme" type="button">Theme: auto</button>
-    </div>
-  </header>
-  <p class="lede">What the agent is doing right now, read from its own state files and from the chain. Every decision is a record anyone can recompute; on the guardrail contract, each one is anchored before anything executes. This page only reads.</p>
+  <div class="bar">
+    <div class="brand"><img src="/assets/near-logo.png" alt="NEAR"><div><b>NEAR Sentinel</b><span>Autonomous trading agent on NEAR Intents. This page only reads.</span></div></div>
+    <div class="state" aria-live="polite"><i class="lamp" id="lamp"></i><span id="state-text">Connecting to the agent</span></div>
+  </div>
 
-  <div class="kpis" id="kpis"></div>
-  <div class="grid" id="modes"></div>
-  <div class="grid" id="chain"></div>
+  <section class="bay" aria-label="Live scan">
+    <div class="pod">
+      <canvas id="mascot" aria-hidden="true"></canvas>
+      <div class="fallback" id="fallback"><img src="/assets/near-logo.png" alt=""></div>
+      <div class="caption"><h1 id="headline">Waking up</h1><p id="subline">Reading the agent's state.</p></div>
+    </div>
+    <div class="scan">
+      <h2><span>Last scan, <strong id="scan-asset">NEAR</strong> on the <strong id="scan-bar">—</strong> bar</span><span id="scan-next"></span></h2>
+      <div class="chart" id="chart"><svg id="chart-svg" role="img" aria-label="NEAR price, last 48 hours"></svg><div class="beam" id="beam"></div></div>
+      <div>
+        <ol class="gates" id="gates" aria-label="What the agent checked"></ol>
+        <div class="verdict" id="verdict"><b id="verdict-title">—</b><small id="verdict-sub"></small></div>
+      </div>
+    </div>
+  </section>
+  <div class="strip" id="strip"></div>
 
-  <section class="panel">
-    <h2>Latest decisions <span id="dec-sub"></span></h2>
-    <div class="filters" id="filters" role="group" aria-label="Filter decisions"></div>
-    <div class="tablewrap"><table>
-      <thead><tr><th>Decided</th><th>Bar</th><th>Asset</th><th>Outcome</th><th>Why</th><th>LLM</th><th>On chain</th><th>Record</th></tr></thead>
-      <tbody id="decisions"></tbody>
+  <div class="row2" id="agents"></div>
+  <div class="row2" id="guards"></div>
+
+  <section class="panel log">
+    <h3>Decision log <em id="log-sub"></em></h3>
+    <div class="tools" id="tools" role="group" aria-label="Filter the log"></div>
+    <div class="scroll"><table>
+      <thead><tr><th>Decided</th><th>Bar (UTC)</th><th>Asset</th><th>Outcome</th><th>Reason</th><th>LLM</th><th>On chain</th><th>Record</th></tr></thead>
+      <tbody id="log"></tbody>
     </table></div>
   </section>
-  <footer id="footer">Refreshes every 15 s. Local only (127.0.0.1): no wallet, no keys, no buttons that act. Check any record with <span class="mono">pnpm verify &lt;hash&gt;</span>.</footer>
+  <footer id="footer">Local page on 127.0.0.1, refreshed every 15 seconds. No wallet, no keys, nothing here can act. Recompute any record with pnpm verify and its hash.</footer>
 </div>
+
 <script>
 "use strict";
 const $ = (s) => document.querySelector(s);
@@ -115,101 +190,198 @@ const el = (tag, attrs = {}, ...kids) => {
   for (const c of kids) if (c != null) n.append(c);
   return n;
 };
-const usd = (x) => (x == null ? "—" : `$${Number(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-const ago = (t, now) => { const s = Math.max(0, Math.round((now - t) / 1000)); return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
-const utc = (t) => new Date(t).toISOString().slice(5, 16).replace("T", " ");
-const label = { NO_SIGNAL: "no breakout", VETO_BTC_REGIME: "BTC trend against it", VETO_RSI_EXHAUSTION: "move already stretched (RSI)", INSUFFICIENT_CONFLUENCE: "not enough confirmations", POSITION_OPEN: "position already open", COOLDOWN: "cooling down after a stop", STALE_DATA: "market data too old", KILL_SWITCH: "kill switch on", DAILY_LOSS_LIMIT: "daily loss limit", MAX_TRADES_PER_DAY: "daily trade limit", LLM_VETO: "LLM vetoed", COST_TOO_HIGH: "costs too high vs target", EXIT_PENDING: "exit pending" };
-const explorer = (net, kind, id) => `https://${net === "testnet" ? "testnet." : ""}nearblocks.io/${kind}/${id}`;
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const usd = (x) => `$${Number(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const ago = (t, now) => { const s = Math.max(0, Math.round((now - t) / 1000)); return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`; };
+const hhmm = (t) => new Date(t).toISOString().slice(11, 16);
+const day = (t) => new Date(t).toISOString().slice(5, 10).replace("-", "/");
+const why = { NO_SIGNAL: "No breakout", VETO_BTC_REGIME: "BTC trend against it", VETO_RSI_EXHAUSTION: "Move already stretched", INSUFFICIENT_CONFLUENCE: "Not enough confirmations", POSITION_OPEN: "Position already open", COOLDOWN: "Cooling down after a stop", STALE_DATA: "Market data too old", KILL_SWITCH: "Kill switch on", DAILY_LOSS_LIMIT: "Daily loss limit reached", MAX_TRADES_PER_DAY: "Daily trade limit reached", LLM_VETO: "LLM vetoed it", COST_TOO_HIGH: "Costs too high for the target", EXIT_PENDING: "Exit pending" };
+const scanner = (net, kind, id) => `https://${net === "testnet" ? "testnet." : ""}nearblocks.io/${kind}/${id}`;
 
-// theme
-const themes = ["auto", "dark", "light"];
-let theme = "auto";
-try { theme = localStorage.getItem("ns-theme") || "auto"; } catch {}
-const applyTheme = () => { if (theme === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", theme); $("#theme").textContent = `Theme: ${theme}`; };
-$("#theme").addEventListener("click", () => { theme = themes[(themes.indexOf(theme) + 1) % 3]; try { localStorage.setItem("ns-theme", theme); } catch {} applyTheme(); });
-applyTheme();
+let S = null, filter = "ALL", lastOk = 0, mood = "boot";
 
-let S = null, filter = "ALL", lastOk = 0;
-
-function kpis() {
-  const now = S.at;
-  const paper = S.modes.find((m) => m.mode === "paper"), live = S.modes.find((m) => m.mode === "live");
-  const runningMode = [live, paper].find((m) => m && m.running);
-  const items = [];
-  items.push(["Agent", runningMode ? `running · ${runningMode.mode}` : "stopped", runningMode ? `heartbeat ${ago(runningMode.heartbeat.at, now)}` : (paper && paper.alert) || "no heartbeat yet", runningMode ? "ok" : "bad"]);
-  if (S.prices) items.push(["Market", `NEAR ${S.prices.NEAR ? S.prices.NEAR.toFixed(4) : "—"}`, `BTC ${S.prices.BTC ? Math.round(S.prices.BTC).toLocaleString("en-US") : "—"} · ${ago(S.prices.at, now)}`, ""]);
-  if (paper && paper.portfolio) items.push(["Paper equity", usd(paper.portfolio.equityUsd), `${paper.portfolio.positions.length ? paper.portfolio.positions.map((p) => p.asset).join(", ") + " open" : "100% USDC"} · fictitious funds`, ""]);
-  if (S.liveWallet) items.push(["Live wallet (NEAR Intents)", S.liveWallet.error ? "unavailable" : usd(S.liveWallet.usdc + S.liveWallet.near * (S.prices?.NEAR ?? 0) + S.liveWallet.btc * (S.prices?.BTC ?? 0)), S.liveWallet.error || `${S.liveWallet.usdc.toFixed(2)} USDC · ${S.liveWallet.near.toFixed(4)} NEAR · real funds`, S.liveWallet.error ? "bad" : ""]);
-  items.push(["Decisions, last 7 days", String(S.counts.total), `${S.counts.trades} trade${S.counts.trades === 1 ? "" : "s"} · ${S.counts.rejects} refusal${S.counts.rejects === 1 ? "" : "s"} · ${S.counts.holds} hold${S.counts.holds === 1 ? "" : "s"}`, ""]);
-  $("#kpis").replaceChildren(...items.map(([k, v, s, c]) => el("div", { class: "kpi" }, el("div", { class: "k", text: k }), el("div", { class: "v " + c, text: v }), el("div", { class: "s", text: s }))));
-  const d = $("#pulse-dot");
-  d.className = "dot " + (runningMode ? "on" : "bad");
-  $("#pulse-text").textContent = runningMode ? `${runningMode.mode} agent running` : "agent stopped";
-}
-
-function modeCard(m) {
-  const now = S.at;
-  const p = m.portfolio;
-  const status = m.running ? el("span", { class: "tag t-on", text: "RUNNING" }) : m.portfolio ? el("span", { class: "tag t-off", text: "STOPPED" }) : el("span", { class: "tag t-off", text: m.configured ? "NOT STARTED" : "NOT CONFIGURED" });
-  const dl = el("dl");
-  const add = (k, v, cls) => dl.append(el("dt", { text: k }), el("dd", { class: cls || "", text: v }));
-  if (m.heartbeat) add("Heartbeat", `${ago(m.heartbeat.at, now)}${m.heartbeat.status !== "ok" ? ` · ${m.heartbeat.status}` : ""}`, m.running ? "" : "warn");
-  if (m.lastBarTime != null) add("Last bar decided", `${utc(m.lastBarTime)} UTC`);
-  if (p) {
-    add("Equity", `${usd(p.equityUsd)} (peak ${usd(p.peakEquityUsd)})`);
-    add("Balances", `${p.balances.USDC.toFixed(2)} USDC · ${p.balances.NEAR.toPrecision(4)} NEAR · ${p.balances.BTC.toPrecision(4)} BTC`);
-    add("Positions", p.positions.length ? p.positions.map((x) => `${x.asset} ${x.quantity.toPrecision(5)} @ ${x.entryPrice.toPrecision(6)} · stop ${x.stopPrice.toPrecision(6)}${x.tp1Hit ? " · TP1 hit" : ""}`).join("\n") : "none (cash)");
-    add("Entries today", String(p.entriesToday));
-    add("Kill switch", p.killSwitch ? "ON — owner reset needed" : "off", p.killSwitch ? "bad" : "");
+// ---------------------------------------------------------------- scan view
+const GATES = [
+  ["Breakout", "Price closes above the squeeze band", ["BB_BREAKOUT"]],
+  ["Momentum", "RSI rising, not stretched", ["RSI_MOMENTUM", "RSI_EXHAUSTION"]],
+  ["Support", "An unfilled gap below the entry", ["FVG_SUPPORT"]],
+  ["BTC trend", "Bitcoin not pulling the other way", ["BTC_REGIME"]],
+  ["Risk rules", "Size, stop, costs, daily limits", null],
+  ["LLM review", "Attested model can only shrink it", null],
+  ["Anchored", "Hash written on chain before acting", null],
+];
+function gateStates(sc) {
+  if (!sc) return GATES.map(() => "skip");
+  const sig = (kinds) => sc.signals.find((x) => kinds.includes(x.kind));
+  const out = [];
+  let stopped = false;
+  for (const [, , kinds] of GATES.slice(0, 4)) {
+    const s = sig(kinds);
+    let st = s ? (s.direction === "veto" || s.direction === "bearish" ? "fail" : "pass") : "skip";
+    if (kinds[0] === "BB_BREAKOUT" && !s) st = "fail";
+    if (stopped) st = "skip";
+    if (st === "fail") stopped = true;
+    out.push(st);
   }
-  if (m.alert && m.portfolio) add("Alert", m.alert, "bad");
-  const empty = !p && !m.heartbeat ? el("p", { class: "empty", text: m.mode === "live" ? "Not running. Starts with pnpm live --yes-real-funds, once the owner agrees." : "Not running. Starts with pnpm paper." }) : null;
-  return el("section", { class: "panel" },
-    el("h2", {}, `${m.mode === "live" ? "Live" : "Paper"} agent`, el("span", {}, status, m.mode === "live" ? " real funds, capped per trade" : " real market, simulated fills")), dl, empty);
+  const rulesRan = sc.checks.length > 0 && !stopped;
+  out.push(!rulesRan ? "skip" : sc.checks.every((c) => c.ok) ? "pass" : "fail");
+  out.push(sc.llm ? (sc.llm.startsWith("approve") ? "pass" : "fail") : "skip");
+  out.push(sc.anchored === true ? "pass" : sc.anchored === false ? "fail" : "skip");
+  return out;
+}
+let scanTimer;
+function runScan(instant) {
+  clearTimeout(scanTimer);
+  const sc = S && S.scan;
+  const states = gateStates(sc);
+  const items = GATES.map(([t, s]) => el("li", { class: "gate" }, el("i"), el("div", {}, el("b", { text: t }), el("small", { text: s }))));
+  $("#gates").replaceChildren(...items);
+  const v = $("#verdict");
+  v.className = "verdict";
+  const title = !sc ? "No decision yet" : sc.action === "TRADE" ? "Trade sent" : sc.action === "REJECT" ? "Refused" : "Holding";
+  $("#verdict-title").textContent = title;
+  $("#verdict-sub").textContent = !sc ? "The first scan lands at the next hourly close." : sc.action === "TRADE" ? "Every gate passed, recorded first, then executed." : `${why[sc.reason] || sc.reason}. Recorded, like a trade.`;
+  const kind = !sc ? "" : sc.action.toLowerCase();
+  const beam = $("#beam");
+  const reveal = (i) => { if (i < items.length) items[i].classList.add(states[i]); else v.classList.add("shown", kind); };
+  if (instant || reduced) { items.forEach((_, i) => reveal(i)); reveal(items.length); beam.style.opacity = 0; return; }
+  // the beam sweeps the chart; the gates light up as it passes, then the verdict lands
+  const W = $("#chart").clientWidth;
+  const t0 = performance.now(), dur = 3200;
+  let shown = 0;
+  beam.style.opacity = 1;
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur);
+    beam.style.transform = `translateX(${p * (W - 90)}px)`;
+    while (shown <= items.length && p >= shown / (items.length + 1)) reveal(shown++);
+    if (p < 1) requestAnimationFrame(step); else { reveal(items.length); setTimeout(() => (beam.style.opacity = 0), 400); scanTimer = setTimeout(() => runScan(false), 12000); }
+  };
+  requestAnimationFrame(step);
 }
 
-function guardCard(g) {
+function chart() {
+  const svg = $("#chart-svg");
+  const box = $("#chart");
+  const W = Math.max(280, box.clientWidth), H = Math.max(200, box.clientHeight);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.replaceChildren();
+  const NS = "http://www.w3.org/2000/svg";
+  const add = (tag, a) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(a)) n.setAttribute(k, v); svg.append(n); return n; };
+  const c = (S && S.chart) || [];
+  if (!c.length) { const t = add("text", { x: 8, y: 20 }); t.textContent = "Candles appear once the agent has run."; return; }
+  const R = 46, B = 22, T = 8;
+  let lo = Math.min(...c.map((k) => k[3])), hi = Math.max(...c.map((k) => k[2]));
+  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  const x = (i) => (i + 0.5) * ((W - R) / c.length);
+  const y = (v) => T + (hi - v) / (hi - lo) * (H - T - B);
+  for (let k = 0; k <= 3; k++) {
+    const v = lo + (hi - lo) * k / 3;
+    add("line", { x1: 0, x2: W - R, y1: y(v), y2: y(v), stroke: "rgba(124,142,151,0.12)" });
+    const t = add("text", { x: W - R + 6, y: y(v) + 4 }); t.textContent = v.toFixed(3);
+  }
+  const bw = Math.max(1.5, (W - R) / c.length * 0.56);
+  c.forEach((k, i) => {
+    const up = k[4] >= k[1];
+    const col = up ? "#00ec97" : "#ff7a6b";
+    add("line", { x1: x(i), x2: x(i), y1: y(k[2]), y2: y(k[3]), stroke: col, "stroke-width": 1 });
+    add("rect", { x: x(i) - bw / 2, y: y(Math.max(k[1], k[4])), width: bw, height: Math.max(1, Math.abs(y(k[1]) - y(k[4]))), fill: up ? col : "transparent", stroke: col, "stroke-width": 1 });
+  });
+  for (const i of [0, Math.floor(c.length / 2), c.length - 1]) { const t = add("text", { x: Math.min(x(i) - 14, W - R - 60), y: H - 6 }); t.textContent = `${day(c[i][0])} ${hhmm(c[i][0])}`; }
+  if (S.scan && S.scan.asset === "NEAR") {
+    const i = c.findIndex((k) => k[0] === S.scan.barTime);
+    if (i >= 0) add("circle", { cx: x(i), cy: y(c[i][2]) - 10, r: 5, fill: "none", stroke: S.scan.action === "REJECT" ? "#ffb547" : S.scan.action === "TRADE" ? "#00ec97" : "#7c8e97", "stroke-width": 2 });
+  }
+}
+
+// ---------------------------------------------------------------- panels
+function header() {
+  const paper = S.modes.find((m) => m.mode === "paper"), live = S.modes.find((m) => m.mode === "live");
+  const run = [live, paper].find((m) => m && m.running);
+  const paused = S.guardrails.some((g) => g.policy && g.policy.paused) || S.modes.some((m) => m.portfolio && m.portfolio.killSwitch);
+  mood = paused ? "alert" : run ? "scan" : "sleep";
+  $("#lamp").className = "lamp " + (paused ? "wait" : run ? "on" : "off");
+  $("#state-text").textContent = paused ? "Paused by the guardrail" : run ? `${run.mode === "live" ? "Live" : "Paper"} agent running, heartbeat ${ago(run.heartbeat.at, S.at)}` : "Agent stopped";
+  $("#headline").textContent = paused ? "Standing guard" : run ? "Scanning the market" : "Sentinel is offline";
+  const m = run || paper;
+  const next = m && m.lastBarTime != null ? m.lastBarTime + 2 * 3600_000 + 15_000 : null;
+  $("#subline").textContent = paused ? "Trades are blocked on chain until the owner unpauses." : run
+    ? `One decision per hourly close for BTC and NEAR, each one recorded and anchored.`
+    : "No heartbeat. Start it with pnpm paper, and positions are watched again.";
+  if (S.scan) { $("#scan-asset").textContent = S.scan.asset; $("#scan-bar").textContent = `${day(S.scan.barTime)} ${hhmm(S.scan.barTime)} UTC`; }
+  $("#scan-next").textContent = next && run ? `Next scan in ${Math.max(0, Math.round((next - S.at) / 60000))} min` : "";
+}
+
+function strip() {
+  const paper = S.modes.find((m) => m.mode === "paper");
+  const anchored = S.guardrails.reduce((a, g) => a + (g.decisionCount || 0), 0);
+  const today = S.guardrails.find((g) => g.network === "mainnet" && g.policy) || S.guardrails.find((g) => g.policy);
+  const w = S.liveWallet;
+  const items = [
+    ["NEAR price", S.prices && S.prices.NEAR ? usd(S.prices.NEAR) : "—", S.prices && S.prices.BTC ? `BTC ${Math.round(S.prices.BTC).toLocaleString("en-US")}` : "", ""],
+    ["Paper portfolio", paper && paper.portfolio ? usd(paper.portfolio.equityUsd) : "—", paper && paper.portfolio ? (paper.portfolio.positions.length ? `${paper.portfolio.positions.map((p) => p.asset).join(" and ")} open` : "All in USDC, simulated") : "Not started", ""],
+    ["Live wallet", w ? (w.error ? "Unavailable" : usd(w.usdc + w.near * ((S.prices && S.prices.NEAR) || 0) + w.btc * ((S.prices && S.prices.BTC) || 0))) : "—", w ? (w.error ? w.error : `Real funds in NEAR Intents`) : "Not configured", w && w.error ? "bad" : ""],
+    ["Trades today", today ? `${today.dayUsage ? today.dayUsage.trades : 0} of ${today.policy.max_trades_per_day}` : "—", today ? `Cap enforced by the ${today.network} contract` : "Contract not configured", ""],
+    ["Anchored on chain", String(anchored), `Decisions written before acting`, anchored ? "good" : ""],
+  ];
+  $("#strip").replaceChildren(...items.map(([k, v, s, c]) => el("div", { class: "gauge" }, el("span", { text: k }), el("strong", { class: c, text: v }), el("small", { text: s }))));
+}
+
+function agentPanel(m) {
+  const p = m.portfolio;
+  const chip = m.running ? el("span", { class: "chip on", text: "Running" }) : p ? el("span", { class: "chip off", text: "Stopped" }) : el("span", { class: "chip", text: m.configured ? "Not started" : "Not configured" });
   const dl = el("dl");
   const add = (k, v, cls) => dl.append(el("dt", { text: k }), el("dd", { class: cls || "", text: v }));
-  add("Contract", g.contract, "mono");
-  add("Agent", g.agent, "mono");
+  if (m.heartbeat) add("Heartbeat", ago(m.heartbeat.at, S.at) + (m.heartbeat.status !== "ok" ? `, ${m.heartbeat.status}` : ""), m.running ? "" : "warn");
+  if (m.lastBarTime != null) add("Last bar decided", `${day(m.lastBarTime)} ${hhmm(m.lastBarTime)} UTC`);
+  if (p) {
+    add("Equity", `${usd(p.equityUsd)}, peak ${usd(p.peakEquityUsd)}`);
+    add("Holdings", `${p.balances.USDC.toFixed(2)} USDC, ${Number(p.balances.NEAR.toPrecision(4))} NEAR, ${Number(p.balances.BTC.toPrecision(4))} BTC`);
+    add("Positions", p.positions.length ? p.positions.map((x) => `${x.asset} ${x.quantity.toPrecision(5)} from ${x.entryPrice.toPrecision(5)}, stop ${x.stopPrice.toPrecision(5)}`).join("; ") : "None");
+    add("Kill switch", p.killSwitch ? "On, waiting for the owner" : "Off", p.killSwitch ? "bad" : "");
+  }
+  const body = p || m.heartbeat ? dl : el("p", { class: "quiet", text: m.mode === "live" ? "Starts with pnpm live --yes-real-funds, once the owner agrees. Trades are capped per order." : "Starts with pnpm paper." });
+  return el("section", { class: "panel" }, el("h3", {}, m.mode === "live" ? "Live agent" : "Paper agent", el("em", { text: m.mode === "live" ? "Real funds" : "Real market, simulated fills" })), el("div", { style: "margin:-4px 0 12px" }, chip), body);
+}
+
+function guardPanel(g) {
+  const dl = el("dl");
+  const add = (k, v, cls) => dl.append(el("dt", { text: k }), el("dd", { class: cls || "", text: v }));
+  add("Contract", g.contract, "addr");
+  add("Agent key", g.agent, "addr");
   if (g.policy) {
-    add("State", g.policy.paused ? "PAUSED — only the owner can unpause" : "active", g.policy.paused ? "bad" : "ok");
-    add("Trades today", `${g.dayUsage ? g.dayUsage.trades : "?"} / ${g.policy.max_trades_per_day} (enforced on chain)`);
+    add("State", g.policy.paused ? "Paused, only the owner can resume" : "Active", g.policy.paused ? "bad" : "good");
+    add("Trades today", `${g.dayUsage ? g.dayUsage.trades : 0} of ${g.policy.max_trades_per_day}`);
     if (g.decisionCount != null) add("Decisions anchored", String(g.decisionCount));
   }
-  if (g.error) add("Read error", g.error, "err");
-  const link = el("a", { href: explorer(g.network, "address", g.contract), target: "_blank", rel: "noopener noreferrer", text: "view on NearBlocks" });
-  return el("section", { class: "panel" }, el("h2", {}, `Guardrail · ${g.network}`, el("span", {}, link)), dl);
+  if (g.error) add("Read error", g.error, "bad");
+  return el("section", { class: "panel" }, el("h3", {}, `Guardrail on ${g.network}`, el("a", { href: scanner(g.network, "address", g.contract), target: "_blank", rel: "noopener noreferrer", text: "Open in NearBlocks" })), dl);
 }
 
-function decisions() {
-  const now = S.at;
+function log() {
   const shown = S.decisions.filter((d) => filter === "ALL" || d.action === filter || (filter === "ACTIVE" && d.action !== "HOLD"));
-  $("#dec-sub").textContent = `${shown.length} of the latest ${S.decisions.length}`;
-  const opts = [["ALL", "All"], ["ACTIVE", "Trades & refusals"], ["TRADE", "Trades"], ["REJECT", "Refusals"], ["HOLD", "Holds"]];
-  $("#filters").replaceChildren(...opts.map(([k, t]) => el("button", { type: "button", "aria-pressed": String(filter === k), onclick: () => { filter = k; decisions(); } }, t)));
-  const rows = shown.map((d) => {
-    const cls = d.action === "TRADE" ? "b-trade" : d.action === "REJECT" ? "b-reject" : "b-hold";
-    const anchor = d.anchor ? el("a", { href: explorer(d.anchor.network, "address", d.anchor.contract), target: "_blank", rel: "noopener noreferrer", text: `#${d.anchor.seq} · ${d.anchor.network}` }) : el("span", { class: "empty", text: d.anchor === null ? "not anchored" : "—" });
-    return el("tr", {},
-      el("td", { class: "when", text: ago(d.at, now) }),
-      el("td", { class: "when", text: utc(d.barTime) }),
-      el("td", { text: d.asset }),
-      el("td", {}, el("span", { class: "tag " + cls, text: d.action })),
-      el("td", { text: d.action === "TRADE" ? d.detail : label[d.reason] || d.reason || d.detail }),
-      el("td", { class: "when", text: d.llm || "—" }),
-      el("td", {}, anchor),
-      el("td", { class: "hash", title: d.hash, text: d.hash }));
-  });
-  $("#decisions").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "8", class: "empty", text: "No decision recorded yet." }))]));
+  $("#log-sub").textContent = `${shown.length} shown, last 7 days`;
+  const opts = [["ALL", "All"], ["ACTIVE", "Trades and refusals"], ["TRADE", "Trades"], ["REJECT", "Refusals"], ["HOLD", "Holds"]];
+  $("#tools").replaceChildren(...opts.map(([k, t]) => el("button", { type: "button", "aria-pressed": String(filter === k), onclick: () => { filter = k; log(); } }, t)));
+  const rows = shown.map((d) => el("tr", {},
+    el("td", { class: "t", text: ago(d.at, S.at) }),
+    el("td", { class: "t", text: `${day(d.barTime)} ${hhmm(d.barTime)}` }),
+    el("td", { text: d.asset }),
+    el("td", {}, el("span", { class: "out " + d.action.toLowerCase(), text: d.action === "TRADE" ? "Trade" : d.action === "REJECT" ? "Refused" : "Hold" })),
+    el("td", { text: d.action === "TRADE" ? d.detail : why[d.reason] || d.reason || d.detail }),
+    el("td", { class: "t", text: d.llm || "Not asked" }),
+    el("td", {}, d.anchor ? el("a", { href: scanner(d.anchor.network, "address", d.anchor.contract), target: "_blank", rel: "noopener noreferrer", text: `No. ${d.anchor.seq} on ${d.anchor.network}` }) : el("span", { class: "t", text: d.anchor === null ? "Not anchored" : "Unknown" })),
+    el("td", { class: "h", title: d.hash, text: d.hash })));
+  $("#log").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "8", class: "quiet", text: "Nothing in the last 7 days. The log fills at each hourly close." }))]));
 }
 
+let lastScanHash = null;
 function render() {
-  kpis();
-  $("#modes").replaceChildren(...S.modes.filter((m) => m.mode === "paper" || m.configured || m.portfolio).map(modeCard));
-  $("#chain").replaceChildren(...S.guardrails.map(guardCard));
-  decisions();
+  header(); strip(); chart();
+  $("#agents").replaceChildren(...S.modes.filter((m) => m.mode === "paper" || m.configured || m.portfolio).map(agentPanel));
+  $("#guards").replaceChildren(...S.guardrails.map(guardPanel));
+  log();
+  const h = S.scan ? S.scan.hash : "none";
+  if (h !== lastScanHash) { lastScanHash = h; runScan(false); }
 }
 
 async function refresh() {
@@ -219,15 +391,109 @@ async function refresh() {
     S = await r.json();
     lastOk = Date.now();
     render();
-    $("#updated").textContent = `updated ${new Date(lastOk).toLocaleTimeString()}`;
   } catch (e) {
-    $("#pulse-dot").className = "dot warn";
-    $("#pulse-text").textContent = "dashboard server unreachable";
-    $("#updated").textContent = lastOk ? `last update ${new Date(lastOk).toLocaleTimeString()}` : String(e.message || e);
+    $("#lamp").className = "lamp wait";
+    $("#state-text").textContent = lastOk ? `Lost the dashboard server, last update ${new Date(lastOk).toLocaleTimeString()}` : "Dashboard server unreachable. Start it with pnpm dashboard.";
   }
 }
 refresh();
 setInterval(refresh, 15000);
+// redraw the chart whenever its box changes size (layout, fonts, rotation)
+let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(() => S && chart(), 100); }).observe(document.getElementById("chart"));
 </script>
+
+<script type="module">
+// The sentinel: an original little agent, cap and tee with the NEAR logo, built from primitives.
+import * as THREE from "/vendor/three.module.js";
+const canvas = document.getElementById("mascot");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch { document.getElementById("fallback").style.display = "grid"; }
+if (renderer) {
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+  camera.position.set(0, 1.25, 7.4);
+  camera.lookAt(0, 0.95, 0);
+
+  scene.add(new THREE.HemisphereLight(0xcfe9ff, 0x0a1218, 1.6));
+  const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(2.5, 4, 3); scene.add(key);
+  const rim = new THREE.PointLight(0x00ec97, 18, 8); rim.position.set(-2.2, 1.6, -1.8); scene.add(rim);
+
+  const logo = new THREE.TextureLoader().load("/assets/near-logo.png");
+  logo.colorSpace = THREE.SRGBColorSpace;
+  const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1, ...o });
+  const shell = mat(0xdfe8e5, { roughness: 0.35, metalness: 0.25 });
+  const tee = mat(0x111a20, { roughness: 0.85 });
+  const capMat = mat(0x0c1318, { roughness: 0.7 });
+  const visorMat = new THREE.MeshStandardMaterial({ color: 0x062018, emissive: 0x00ec97, emissiveIntensity: 1.6, roughness: 0.2 });
+
+  const bot = new THREE.Group(); scene.add(bot);
+  // torso in the tee, logo patch on the chest
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.52, 0.42, 8, 24), tee); torso.position.y = 0.05; bot.add(torso);
+  const patch = new THREE.Mesh(new THREE.CircleGeometry(0.2, 40), new THREE.MeshStandardMaterial({ map: logo, roughness: 0.6 }));
+  patch.position.set(0, 0.16, 0.515); bot.add(patch);
+  // arms and legs
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.34, 6, 16), tee); arm.position.set(0.66 * s, 0.05, 0); arm.rotation.z = 0.32 * s; bot.add(arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.12, 20, 16), shell); hand.position.set(0.76 * s, -0.24, 0.02); bot.add(hand);
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.18, 6, 16), shell); leg.position.set(0.22 * s, -0.66, 0); bot.add(leg);
+  }
+  // head with a wrap-around visor
+  const head = new THREE.Group(); head.position.y = 1.02; bot.add(head);
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 40, 32), shell));
+  const visor = new THREE.Mesh(new THREE.CylinderGeometry(0.512, 0.512, 0.16, 48, 1, true, -1.1, 2.2), visorMat);
+  visor.position.y = -0.03; head.add(visor);
+  // cap: crown, brim, logo on the front panel
+  const crown = new THREE.Mesh(new THREE.SphereGeometry(0.53, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2.15), capMat); crown.position.y = 0.06; head.add(crown);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.04, 40, 1, false, -Math.PI / 2, Math.PI), capMat);
+  brim.position.set(0, 0.1, 0.2); brim.rotation.x = 0.12; head.add(brim);
+  const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.24), new THREE.MeshStandardMaterial({ map: logo, roughness: 0.6 }));
+  badge.position.set(0, 0.36, 0.44); badge.rotation.x = -0.55; head.add(badge);
+  // antenna and the hover ring
+  const ant = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), visorMat); ant.position.set(0.0, 0.62, -0.05); head.add(ant);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.025, 12, 80), new THREE.MeshBasicMaterial({ color: 0x00ec97, transparent: true, opacity: 0.75 }));
+  ring.rotation.x = Math.PI / 2; ring.position.y = -0.95; bot.add(ring);
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(0.9, 48), new THREE.MeshBasicMaterial({ color: 0x00ec97, transparent: true, opacity: 0.08 }));
+  glow.rotation.x = -Math.PI / 2; glow.position.y = -0.96; bot.add(glow);
+  // scanning beam out of the visor
+  const beamGeo = new THREE.ConeGeometry(0.55, 3.0, 32, 1, true); beamGeo.translate(0, -1.6, 0); beamGeo.rotateX(-Math.PI / 2);
+  const beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: 0x00ec97, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false }));
+  beam.position.set(0, 0, 0.45); head.add(beam);
+
+  const size = () => {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h;
+    camera.position.z = w < 420 ? 8.6 : 7.4;
+    camera.position.y = w < 420 ? 1.7 : 1.25;
+    camera.lookAt(0, w < 420 ? 1.35 : 0.95, 0);
+    camera.updateProjectionMatrix();
+  };
+  size(); addEventListener("resize", size);
+
+  const colors = { scan: 0x00ec97, alert: 0xffb547, sleep: 0x2a3a42, boot: 0x00ec97 };
+  const clock = new THREE.Clock();
+  const frame = () => {
+    const t = clock.getElapsedTime();
+    const m = window.__mood ? window.__mood() : "boot";
+    const c = colors[m] ?? colors.scan;
+    visorMat.emissive.setHex(c); ring.material.color.setHex(c); glow.material.color.setHex(c); rim.color.setHex(c);
+    visorMat.emissiveIntensity = m === "sleep" ? 0.25 : 1.4 + 0.3 * Math.sin(t * 3);
+    beam.visible = m === "scan" || m === "boot";
+    // it faces the chart (to its left on screen = our right) and sweeps it
+    bot.position.y = 0.3 + (m === "sleep" ? -0.08 : 0.06 * Math.sin(t * 1.6));
+    head.rotation.y = m === "scan" || m === "boot" ? 0.38 + 0.32 * Math.sin(t * 0.9) : m === "alert" ? 0 : 0.1 * Math.sin(t * 0.4);
+    head.rotation.x = m === "sleep" ? 0.3 : 0.06;
+    bot.rotation.y = 0.32 + 0.05 * Math.sin(t * 0.5);
+    ring.scale.setScalar(1 + 0.04 * Math.sin(t * 2));
+    renderer.render(scene, camera);
+    if (!reduced) requestAnimationFrame(frame);
+  };
+  logo.onUpdate = () => reduced && renderer.render(scene, camera);
+  frame();
+}
+</script>
+<script>window.__mood = () => (typeof mood === "string" ? mood : "boot");</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +22,21 @@ export function nearKitReader(): ChainReader {
   return { view: async (network, contract, method, args) => (await get(network)).view(contract, method, args) };
 }
 
+const require_ = createRequire(import.meta.url);
+const here = dirname(fileURLToPath(import.meta.url));
+const font = (pkg: string, file: string) => join(dirname(require_.resolve(`${pkg}/package.json`)), "files", file);
+
+/** The only static files served: an exact map, no path from the request ever reaches the file system. */
+export const STATIC: Readonly<Record<string, { readonly file: () => string; readonly type: string }>> = {
+  "/vendor/three.module.js": { file: () => join(dirname(require_.resolve("three")), "three.module.js"), type: "text/javascript" },
+  "/vendor/three.core.js": { file: () => join(dirname(require_.resolve("three")), "three.core.js"), type: "text/javascript" },
+  "/assets/near-logo.png": { file: () => join(here, "assets", "near-logo.png"), type: "image/png" },
+  "/fonts/chakra-500.woff2": { file: () => font("@fontsource/chakra-petch", "chakra-petch-latin-500-normal.woff2"), type: "font/woff2" },
+  "/fonts/chakra-600.woff2": { file: () => font("@fontsource/chakra-petch", "chakra-petch-latin-600-normal.woff2"), type: "font/woff2" },
+  "/fonts/plex-400.woff2": { file: () => font("@fontsource/ibm-plex-sans", "ibm-plex-sans-latin-400-normal.woff2"), type: "font/woff2" },
+  "/fonts/plex-500.woff2": { file: () => font("@fontsource/ibm-plex-sans", "ibm-plex-sans-latin-500-normal.woff2"), type: "font/woff2" },
+};
+
 export interface DashboardServerOptions {
   readonly root: string;
   readonly env: NodeJS.ProcessEnv;
@@ -31,7 +47,7 @@ export interface DashboardServerOptions {
 }
 
 export async function startDashboard(o: DashboardServerOptions): Promise<{ server: Server; url: string }> {
-  const page = await readFile(join(dirname(fileURLToPath(import.meta.url)), "dashboard.html"), "utf8");
+  const page = await readFile(join(here, "dashboard.html"), "utf8");
   const clock = o.clock ?? Date.now;
   const anchorCache = new Map<string, DecisionView["anchor"]>();
   let cached: { at: number; body: string } | undefined;
@@ -54,7 +70,7 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
     const headers = {
       "x-content-type-options": "nosniff",
       "referrer-policy": "no-referrer",
-      "content-security-policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'",
+      "content-security-policy": "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'",
     };
     if (req.method !== "GET") {
       res.writeHead(405, { ...headers, allow: "GET" }).end("read-only");
@@ -67,6 +83,12 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
       state().then(
         (body) => res.writeHead(200, { ...headers, "content-type": "application/json", "cache-control": "no-store" }).end(body),
         (e) => res.writeHead(500, { ...headers, "content-type": "application/json" }).end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) })),
+      );
+    } else if (path && Object.hasOwn(STATIC, path)) {
+      const f = STATIC[path]!;
+      readFile(f.file()).then(
+        (buf) => res.writeHead(200, { ...headers, "content-type": f.type, "cache-control": "max-age=3600" }).end(buf),
+        () => res.writeHead(404, headers).end("not found"),
       );
     } else {
       res.writeHead(404, headers).end("not found");

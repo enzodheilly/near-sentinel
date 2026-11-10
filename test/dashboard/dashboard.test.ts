@@ -82,5 +82,9 @@ describe("dashboard server", () => {
     expect(st.counts.total).toBe(2);
     for (const method of ["POST", "PUT", "DELETE"]) expect((await fetch(`${url}/api/state`, { method })).status).toBe(405);
     expect((await fetch(`${url}/../state/paper/portfolio.json`)).status).toBe(404);
+    // the fixed static map: 3D engine, fonts and the NEAR logo; nothing else from disk
+    for (const path of ["/vendor/three.module.js", "/vendor/three.core.js", "/fonts/chakra-600.woff2", "/assets/near-logo.png"]) expect((await fetch(`${url}${path}`)).status).toBe(200);
+    for (const path of ["/vendor/../../package.json", "/fonts/x.woff2", "/constructor", "/__proto__"]) expect((await fetch(`${url}${path}`)).status).toBe(404);
+    expect(page.headers.get("content-security-policy")).toMatch(/script-src 'self' 'unsafe-inline'; .*font-src 'self'/);
   });
 });
