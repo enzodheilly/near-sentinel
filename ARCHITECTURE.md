@@ -185,7 +185,7 @@ This is the most important design decision, and the guarantee differs by tier. W
 | If the agent host is compromised | Attacker can sign any intent for the treasury balance | Attacker can only trade within on-chain limits. Withdrawals go to the owner only. |
 | Latency | ~instant signing | One MPC round per trade (seconds). Acceptable on a 1h timeframe. |
 
-Tier 2 is what makes the "bounded authority" claim true. It depends on two facts we have not yet confirmed and will test in the preparation spikes: that `intents.near` accepts a public key added by a contract account and verifies an MPC-produced Ed25519 signature over a NEP-413 payload. If the spike fails, we ship Tier 1, keep the treasury small, and say so in the README.
+Tier 2 is what makes the "bounded authority" claim true. **Decision (10 Nov, §16.1): we ship Tier 1.** The documentation shows a simpler Tier 2 path than the one above (an MPC-derived key owns an implicit Intents account, no registration needed), but it is not proven end to end and #46 is kept as a stretch. The README says plainly that in Tier 1 the agent host is trusted for amounts and keeps the treasury small.
 
 ### 8.3 Chain Signatures for native assets
 
@@ -340,7 +340,10 @@ near-sentinel/
 
 ## 16. Open questions
 
-1. **[VALIDATE]** Tier 2 signing: can a contract account register an MPC-derived Ed25519 key on `intents.near` and have its NEP-413 intents accepted? (Spike P5.)
+1. **Decided (P5, 10 Nov): ship Tier 1; Tier 2 is a documented stretch.**
+   - *What the documentation answers.* The verifier accepts intents from **implicit accounts without any registration**: an Ed25519 key signs for the 64-hex implicit account derived from it, a secp256k1 key signs for the `0x…` address derived from it (standards `raw_ed25519`, `erc191`) ([Account Abstraction](https://docs.near-intents.org/integration/verifier-contract/account-abstraction), [Signing Intents](https://docs.near-intents.org/integration/verifier-contract/signing-intents)). Chain Signatures derive per-contract keys and sign with both ECDSA and EdDSA ([EdDSA support](https://near.org/blog/chain-signatures-adds-eddsa-support-cross-chain-signing-for-solana-ton-stellar-sui-aptos), [implementation](https://docs.near.org/chain-abstraction/chain-signatures/implementation)). So the original question (registering a key from a contract) is unnecessary: the guardrail's MPC-derived key would own an implicit Intents account directly, and the guardrail would request the MPC signature only for a compliant `erc191` or `raw_ed25519` payload.
+   - *What is not proven.* No end-to-end run: we found no testnet deployment of the verifier, so proof needs mainnet (a few cents of gas and an MPC fee) plus the Rust work of #46 (payload parsing, caps in token units, MPC callback). With four days left and a live Tier 1 trade still to do, the risk is too high for the submission.
+   - *Consequence.* Tier 1 ships: the agent signs; the contract enforces the policy it can see (decision log before every trade, daily trade cap, pause, owner-only unpause and policy), and the agent's on-chain key is restricted to those calls (#45). The treasury stays small and the README says the agent host is trusted for amounts. #46 stays open as a stretch with the design above.
 2. ~~Asset ids~~ **Resolved (P1, 19 Oct):** BTC is traded as nBTC (`nep141:nbtc.bridge.near`), quoted within 0.10% of the reference price; wBTC was rejected (1.20% deviation). Asset ids are pinned in config, never resolved by symbol. Still open: minimum trade size for Intents-to-Intents swaps.
 3. Can Binance klines be redistributed in a public repository's fixtures? If not, `fixtures/` stores a short window plus a fetch script.
 4. ~~LLM model~~ **Resolved (P2, 19 Oct):** `Qwen/Qwen3.6-35B-A3B-FP8` returned `provider_tee` signatures and valid veto JSON on 10/10 runs, mean latency 3.68 s.
