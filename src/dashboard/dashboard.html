@@ -468,7 +468,9 @@ if (renderer) {
   // keyboard and mouse
   const kb = at(box(0.62, 0.025, 0.2, dark), 0, TOP + 0.012, 0.02, desk);
   at(new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.16), mat(0x2c3a44)), 0, 0.013, 0, kb).rotation.x = -Math.PI / 2;
-  at(sc(new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.05, 6, 12), dark)), 0.5, TOP + 0.03, 0.02, desk).rotation.x = Math.PI / 2;
+  const MOUSE_HOME = new THREE.Vector3(0.8, TOP + 0.022, -0.16);
+  const mouse = at(sc(new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.05, 6, 12), dark)), MOUSE_HOME.x, MOUSE_HOME.y, MOUSE_HOME.z, desk); mouse.rotation.x = Math.PI / 2;
+  const mousePad = at(new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.2), mat(0x1a242b, { roughness: 0.95 })), MOUSE_HOME.x, TOP + 0.002, MOUSE_HOME.z, desk); mousePad.rotation.x = -Math.PI / 2;
   // notepad and pencil on the robot's right (our left)
   const padTex = canvasTex(256, 340);
   const drawPadBase = () => {
@@ -615,12 +617,39 @@ if (renderer) {
   const NOTE_IN = 1.5, NOTE_OUT = 1.6; // reach + carry, return + back
   let act = null, actStart = 0, lastKind = "", lastSub = "";
   const nextActivity = (t, mood) => {
-    const calm = mood === "alert" ? { type: 6, read: 4, glance: 1 } : { type: 9, read: 3, note: 5, sip: 1.6, glance: 1.6, stretch: 0.7 };
-    let kind = act ? pick(calm) : (Q.get("act") || "type");
+    const calm = mood === "alert" ? { chart: 6, compare: 3, type: 1.5, read: 2 } : { chart: 9, compare: 4, type: 2.5, read: 2.5, note: 5, sip: 1.4, glance: 1.4, stretch: 0.6 };
+    let kind = act ? pick(calm) : (Q.get("act") || "chart");
     if (kind !== "type" && kind === lastKind) kind = "type";
     lastKind = kind; actStart = t;
     if (kind === "note") { const sub = (!lastSub && Q.get("note")) || pick({ word: 3, sentence: 4, list: 2 }); lastSub = sub; const note = planNote(sub); return { kind, sub, note, dur: NOTE_IN + note.dur + NOTE_OUT }; }
-    return { kind, dur: { type: range(3, 10), read: range(2, 4.5), sip: 4.2, glance: range(1.2, 2.2), stretch: 3.2 }[kind], look: rnd() < 0.5 ? -1 : 1, rate: range(9, 16) };
+    if (kind === "chart" || kind === "compare") return mouseWork(kind);
+    return { kind, dur: { type: range(1.5, 4), read: range(2, 4.5), sip: 4.2, glance: range(1.2, 2.2), stretch: 3.2 }[kind], look: rnd() < 0.5 ? -1 : 1, rate: range(9, 16) };
+  };
+
+  // mouse work: a list of gestures over the chart. trace = press, drag a line slowly, release; pan = quick drag
+  // sideways; zoom = small wheel ticks (finger only); hover = small wandering while reading
+  function mouseWork(kind) {
+    const g = []; let t = 0, at = new THREE.Vector2(range(-0.03, 0.03), range(-0.02, 0.02));
+    const total = kind === "chart" ? range(5, 11) : range(4, 8);
+    while (t < total) {
+      const type = kind === "compare" ? pick({ hover: 4, pan: 1 }) : pick({ trace: 4, hover: 3, pan: 2, zoom: 2 });
+      const to = type === "zoom" ? at.clone() : new THREE.Vector2(range(-0.07, 0.07), range(-0.05, 0.05));
+      if (type === "pan") to.set(Math.max(-0.07, Math.min(0.07, at.x + (rnd() < 0.5 ? -1 : 1) * range(0.05, 0.1))), at.y);
+      const dur = { trace: range(1.2, 2.2), hover: range(0.8, 1.8), pan: range(0.4, 0.7), zoom: range(0.6, 1.2) }[type];
+      g.push({ type, t0: t, t1: t + dur, from: at.clone(), to }); t += dur;
+      if (rnd() < 0.6) { const rest = range(0.3, 1.2); g.push({ type: "still", t0: t, t1: t + rest, from: to.clone(), to: to.clone() }); t += rest; }
+      at = to;
+    }
+    return { kind, dur: t, gestures: g, screen: rnd() < 0.5 ? -1 : 1, chin: kind === "compare" && rnd() < 0.6, swap: range(1.2, 2.6) };
+  }
+  const mouseAt = (a, u) => {
+    const g = a.gestures.find((x) => u < x.t1) ?? a.gestures[a.gestures.length - 1];
+    const k = clamp01((u - g.t0) / (g.t1 - g.t0)), e = g.type === "trace" ? k : ease(k);
+    const p = g.from.clone().lerp(g.to, e);
+    if (g.type === "hover") p.add(new THREE.Vector2(0.006 * Math.sin(u * 7.3), 0.005 * Math.sin(u * 5.1)));
+    const press = (g.type === "trace" || g.type === "pan") && k > 0.04 && k < 0.96;
+    const click = g.type === "zoom" ? Math.max(0, Math.sin(u * 22)) * 0.006 : 0;
+    return { p, press, click, type: g.type };
   };
 
   const resize = () => {
@@ -657,7 +686,7 @@ if (renderer) {
     const keyAt = (x, z) => v(x, 0.045, z, kb);
     pencilRest.copy(v(0.2, 0.012, 0.0, pad)); pencilRestDir.copy(v(0.2, 0.012, 0.12, pad)).sub(pencilRest).normalize();
     const above = (p, h) => p.clone().add(new THREE.Vector3(0, h, 0));
-    const mugHome = v(0.72, TOP + 0.08, -0.12, desk);
+    const mugHome = v(1.02, TOP + 0.08, 0.12, desk);
     const restR = v(-0.3, 0.03, -0.14, kb), restL = v(0.3, 0.03, -0.14, kb);
     // typing: each hand hops between keys, bursts and pauses differ per activity
     const typing = (s, rate) => {
@@ -674,6 +703,15 @@ if (renderer) {
     else if (kind === "type") {
       R = typing(-1, act.rate); Lh = typing(1, act.rate * 0.93); kR = kL = 18;
       hy = 0.28 * act.look * Math.sin(u * 0.5) + 0.12 * Math.sin(u * 1.7); hx = 0.05;
+    } else if (kind === "chart" || kind === "compare") {
+      const m = mouseAt(act, u);
+      mouse.position.set(MOUSE_HOME.x + m.p.x, MOUSE_HOME.y, MOUSE_HOME.z + m.p.y);
+      Lh = v(0, 0.045 - (m.press ? 0.008 : 0) - m.click, -0.03, mouse); kL = 14;
+      // eyes on the screen being worked, or going back and forth when comparing
+      const side = kind === "compare" ? (Math.floor(u / act.swap) % 2 ? 1 : -1) * act.screen : act.screen;
+      hy = 0.3 * side + (m.type === "trace" ? 0.08 * (m.p.x / 0.07) : 0); hx = 0.06 + (m.type === "trace" ? 0.03 : 0);
+      R = act.chin ? v(-0.06, 0.5, 0.36, bot) : restR; kR = act.chin ? 4 : 6;
+      if (act.chin) hx -= 0.04;
     } else if (kind === "read") {
       R = restR; Lh = above(keyAt(0.2, 0.0), 0.01); lean = 0.08;
       hy = 0.35 * Math.sin(u * 1.1) * act.look; hx = 0.02 + 0.03 * Math.sin(u * 2.3);
@@ -705,6 +743,7 @@ if (renderer) {
     }
     if (mood === "alert") hy += 0.25;
 
+    if (kind !== "chart" && kind !== "compare") mouse.position.lerp(MOUSE_HOME, 1 - Math.exp(-4 * dt));
     // ease hands and head toward their targets
     const f = (k) => 1 - Math.exp(-k * dt);
     if (!handR) { handR = R.clone(); handL = Lh.clone(); }
