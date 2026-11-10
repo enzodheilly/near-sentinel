@@ -20,6 +20,7 @@
     "status": "node src/cli.ts status",
     "explorer": "node src/cli.ts explorer",
     "paper": "node src/cli.ts paper",
+    "dashboard": "node src/cli.ts dashboard",
     "live": "node src/cli.ts live",
     "contract:build": "cd contracts/guardrail && cargo near build non-reproducible-wasm --no-abi",
     "contract:test": "cargo test --manifest-path contracts/guardrail/Cargo.toml",
