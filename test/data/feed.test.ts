@@ -124,3 +124,16 @@ describe("MarketFeed", () => {
   });
 });
 
+
+describe("BinanceClient retries", () => {
+  it("a timeout or 5xx is retried once; a 4xx is not", async () => {
+    let n = 0;
+    const flaky = (async () => (++n === 1 ? new Response("busy", { status: 503 }) : new Response(JSON.stringify([]), { status: 200 }))) as unknown as typeof fetch;
+    expect(await new BinanceClient({ fetch: flaky }).closedCandles({ symbol: "X", interval: "1h", limit: 1 }, T0)).toEqual([]);
+    expect(n).toBe(2);
+    let m = 0;
+    const bad = (async () => { m++; return new Response("bad symbol", { status: 400 }); }) as unknown as typeof fetch;
+    await expect(new BinanceClient({ fetch: bad }).closedCandles({ symbol: "X", interval: "1h", limit: 1 }, T0)).rejects.toThrow(/HTTP 400/);
+    expect(m).toBe(1);
+  });
+});

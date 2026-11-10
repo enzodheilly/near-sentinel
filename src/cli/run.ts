@@ -54,6 +54,8 @@ export interface RunnerOptions {
   /** On-chain anchoring of each decision hash before its trade (mandatory in live mode, optional in paper). */
   readonly anchor?: Anchor;
   readonly clock?: () => number;
+  /** After a failed tick, retry this often until the next close (default 60 s). */
+  readonly retryMs?: number;
   /** Delay after the candle close before ticking (the source must have the final bar). */
   readonly tickDelayMs?: number;
   readonly write?: (line: string) => void;
@@ -74,6 +76,7 @@ export class Runner {
   private queue: Promise<unknown> = Promise.resolve();
   private timer: ReturnType<typeof setTimeout> | undefined;
   private stopping = false;
+  private failedAttempts = 0;
   private readonly watcher: PriceWatcher;
 
   private constructor(o: RunnerOptions, portfolio: PortfolioSnapshot, lastBarTime: number | undefined) {
@@ -121,9 +124,8 @@ export class Runner {
 
   start(): void {
     this.stopping = false;
-    void this.serial(() => this.tickStep()); // catch up the last closed bar now
     this.watcher.start();
-    this.scheduleTick();
+    this.scheduleTick(0); // catch up the last closed bar now, then every close
   }
 
   /** Stops scheduling and waits for the step in progress (and the watcher's) to finish. */
@@ -137,16 +139,31 @@ export class Runner {
   }
 
   /** One tick on the last closed bar, if it has not been ticked yet. */
-  tick(): Promise<void> {
-    return this.serial(() => this.tickStep());
+  async tick(): Promise<void> {
+    await this.serial(() => this.tickStep());
   }
 
-  private scheduleTick() {
+  /** Next tick at the next close; after a failed tick (data down, anchor failed), retry every minute until it. */
+  private scheduleTick(afterMs?: number) {
     if (this.stopping) return;
     const now = this.clock();
     this.timer = setTimeout(() => {
-      void this.serial(() => this.tickStep()).finally(() => this.scheduleTick());
-    }, Math.max(0, this.nextTickAt(now) - now));
+      void this.serial(() => this.tickStep()).then(
+        (ok) => {
+          const t = this.clock();
+          const retry = this.o.retryMs ?? 60_000;
+          const nextClose = this.nextTickAt(t) - (this.o.tickDelayMs ?? 15_000);
+          if (ok) this.failedAttempts = 0;
+          else if (t + retry < nextClose) return this.scheduleTick(retry);
+          else if (this.failedAttempts > 0) {
+            this.write(`gave up on this bar after ${this.failedAttempts} attempts; next try at the next close`);
+            this.failedAttempts = 0;
+          }
+          this.scheduleTick();
+        },
+        () => this.scheduleTick(),
+      );
+    }, afterMs ?? Math.max(0, this.nextTickAt(now) - now));
   }
 
   private serial<T>(fn: () => Promise<T>): Promise<T> {
@@ -167,27 +184,29 @@ export class Runner {
     };
   }
 
-  private async tickStep(): Promise<void> {
+  /** One tick; false when it must be retried (market data unavailable, or the tick aborted before execution). */
+  private async tickStep(): Promise<boolean> {
     const now = this.clock();
     let snap: FeedSnapshot;
     try {
       snap = await this.o.feed.snapshot(now);
     } catch (e) {
-      this.write(`tick skipped: market data unavailable (${e instanceof Error ? e.message : String(e)}); the watcher keeps guarding open positions`);
-      return;
+      if (this.failedAttempts++ === 0) this.write(`market data unavailable (${e instanceof Error ? e.message : String(e)}); retrying every minute until the next close, the watcher keeps guarding open positions`);
+      return false;
     }
+    if (this.failedAttempts > 0) this.write(`market data back after ${this.failedAttempts} failed attempt(s)`);
     for (const p of snap.problems) this.write(`data: ${p}`);
     this.market = snap.market;
     this.marketBar = snap.barTime;
-    if (snap.barTime === undefined || (this.lastBarTime !== undefined && snap.barTime <= this.lastBarTime)) return;
+    if (snap.barTime === undefined || (this.lastBarTime !== undefined && snap.barTime <= this.lastBarTime)) return true;
     const { deps, hashes } = this.deps(snap.market);
     let r: Awaited<ReturnType<typeof runTick>>;
     try {
       r = await runTick({ barTime: snap.barTime, market: snap.market, portfolio: this.portfolio, executed: this.o.keys }, deps, this.o.cfg);
     } catch (e) {
       // e.g. anchoring failed: the decision was not executed; the portfolio is unchanged, the next tick retries
-      this.write(`ALERT tick aborted before execution: ${e instanceof Error ? e.message : String(e)}`);
-      return;
+      if (this.failedAttempts++ === 0) this.write(`ALERT tick aborted before execution: ${e instanceof Error ? e.message : String(e)}; retrying every minute until the next close`);
+      return false;
     }
     this.portfolio = r.portfolio;
     this.lastBarTime = snap.barTime;
@@ -200,6 +219,7 @@ export class Runner {
     }
     for (const a of r.alerts) this.write(`ALERT ${a}`);
     this.write(`${bar} equity $${this.portfolio.equityUsd.toFixed(2)} · positions ${this.portfolio.positions.map((p) => `${p.asset} ${p.quantity.toPrecision(6)}`).join(", ") || "none"}`);
+    return true;
   }
 
   private async watchStep(prices: Partial<Record<TradableAsset, number>>, at: number): Promise<void> {
