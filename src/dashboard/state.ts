@@ -42,8 +42,25 @@ export interface DecisionView {
   readonly anchor?: { readonly network: string; readonly contract: string; readonly seq: number; readonly at: number } | null;
 }
 
+/** What the agent looked at on its latest bar, for the scan view. */
+export interface ScanView {
+  readonly hash: string;
+  readonly asset: string;
+  readonly barTime: number;
+  readonly action: string;
+  readonly reason?: string;
+  readonly signals: readonly { readonly kind: string; readonly direction: string }[];
+  readonly checks: readonly { readonly name: string; readonly ok: boolean }[];
+  readonly llm?: string;
+  readonly anchored?: boolean;
+}
+
 export interface DashboardState {
   readonly at: number;
+  /** Last NEAR 1h candles from the agent's archive: [openTime, open, high, low, close]. */
+  readonly chart: readonly (readonly [number, number, number, number, number])[];
+  /** The latest NEAR decision and the latest decision overall (the scan view shows NEAR first). */
+  readonly scan?: ScanView;
   readonly modes: readonly ModeView[];
   readonly guardrails: readonly GuardrailView[];
   readonly liveWallet?: { readonly account: string; readonly usdc: number; readonly near: number; readonly btc: number; readonly error?: string };
@@ -184,11 +201,28 @@ export async function buildDashboardState(o: BuildOptions): Promise<DashboardSta
     });
   }
   decisions.sort((a, b) => b.at - a.at);
+
+  const latest = recs.filter((r) => now - r.rec.inputs.now <= 7 * 86_400_000).sort((a, b) => b.rec.inputs.now - a.rec.inputs.now || (a.rec.asset === "NEAR" ? -1 : 1))[0];
+  let scan: ScanView | undefined;
+  if (latest) {
+    const r = latest.rec;
+    const a = cache.get(latest.hash);
+    scan = {
+      hash: latest.hash, asset: r.asset, barTime: r.barTime, action: r.outcome.action,
+      ...(r.outcome.action !== "TRADE" ? { reason: r.outcome.reason } : {}),
+      signals: r.signals.map((x) => ({ kind: x.kind, direction: x.direction })),
+      checks: r.checks.map((c) => ({ name: c.name, ok: c.ok })),
+      ...(r.llm ? { llm: `${r.llm.verdict} × ${r.llm.sizeMultiplier}` } : {}),
+      ...(a !== undefined ? { anchored: a !== null } : {}),
+    };
+  }
+  const archive = await readJson<{ candles: { openTime: number; open: number; high: number; low: number; close: number }[] }>(join(o.root, "data", "candles", "NEARUSDT-1h.json"));
+  const chart = (archive?.candles ?? []).slice(-48).map((c) => [c.openTime, c.open, c.high, c.low, c.close] as const);
   const counts = {
     total: decisions.length,
     trades: decisions.filter((d) => d.action === "TRADE").length,
     rejects: decisions.filter((d) => d.action === "REJECT").length,
     holds: decisions.filter((d) => d.action === "HOLD").length,
   };
-  return { at: now, modes, guardrails, ...(liveWallet ? { liveWallet } : {}), ...(prices ? { prices } : {}), decisions, counts };
+  return { at: now, chart, ...(scan ? { scan } : {}), modes, guardrails, ...(liveWallet ? { liveWallet } : {}), ...(prices ? { prices } : {}), decisions, counts };
 }
