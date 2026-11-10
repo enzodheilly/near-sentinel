@@ -10,7 +10,9 @@
  * - SIGINT / SIGTERM: stop scheduling, let the step in progress finish (record, fill, state), then exit.
  *   Combined with the idempotency registry, an interruption never leaves a half-recorded trade.
  *
- * `pnpm live` is refused until live execution through NEAR Intents exists (#47).
+ * `pnpm live --yes-real-funds` (#47) runs the same loop with the live executor: real swaps inside NEAR Intents,
+ * signed by the agent's intent key, each decision anchored on chain first (mandatory), and an owner-set cap per
+ * trade (LIVE_MAX_NOTIONAL_USD, default $10).
  */
 
 import { join } from "node:path";
@@ -50,7 +52,7 @@ export interface RunnerOptions {
   readonly heartbeat: HeartbeatSink;
   readonly recordsDir: string;
   readonly statePath: string;
-  readonly mode: "paper";
+  readonly mode: "paper" | "live";
   /** On-chain anchoring of each decision hash before its trade (mandatory in live mode, optional in paper). */
   readonly anchor?: Anchor;
   readonly clock?: () => number;
@@ -309,4 +311,63 @@ export async function anchorFromEnv(env: NodeJS.ProcessEnv): Promise<Anchor | un
   const { ContractAnchor } = await import("../execution/anchor.ts");
   const near = new Near({ network, keyStore: { [agentId]: key }, defaultWaitUntil: "FINAL" });
   return new ContractAnchor({ near: near as never, contractId, agentId });
+}
+
+/** Live layout: separate from paper so the two never mix. */
+export const livePaths = (root: string) => ({ ...paperPaths(root), state: join(root, "state", "live", "portfolio.json"), keys: join(root, "state", "live", "executed.jsonl"), heartbeat: join(root, "state", "live", "heartbeat.json") });
+
+/** `pnpm live --yes-real-funds`: real trades. Refuses to start without anchoring, keys or the explicit flag. */
+export async function runLive(o: { root: string; env: NodeJS.ProcessEnv; args: readonly string[]; write: (l: string) => void; signals?: NodeJS.Process }): Promise<number> {
+  const cfg = defaultRiskConfig;
+  const e = o.env;
+  if (!o.args.includes("--yes-real-funds")) {
+    o.write("pnpm live trades real funds. Re-run with --yes-real-funds once the owner has agreed.");
+    return 2;
+  }
+  const account = e["AGENT_ACCOUNT"];
+  const key = e["AGENT_PRIVATE_KEY"];
+  if (!account || !key) {
+    o.write("live needs AGENT_ACCOUNT and AGENT_PRIVATE_KEY in .env (scripts/setup-live-key.ts)");
+    return 2;
+  }
+  const anchor = await anchorFromEnv(e);
+  if (!anchor) {
+    o.write("live needs the on-chain guardrail: NEAR_AGENT_ACCOUNT, NEAR_GUARDRAIL_CONTRACT, NEAR_AGENT_KEY (scripts/deploy-guardrail.ts)");
+    return 2;
+  }
+  const cap = Number(e["LIVE_MAX_NOTIONAL_USD"] ?? 10);
+  const P = livePaths(o.root);
+  const oneclick = new OneClickClient({ jwt: e["ONECLICK_JWT"] });
+  const binance = new BinanceClient();
+  const nearaiKey = e["NEARAI_API_KEY"];
+  const llm: EngineDeps["llm"] = nearaiKey
+    ? nearAiVeto(new NearAiClient({ apiKey: nearaiKey, timeoutMs: cfg.llm.timeoutMs }), cfg)
+    : async () => { throw new Error("NEARAI_API_KEY not set"); };
+  const { Near } = await import("near-kit");
+  const { LiveExecutor } = await import("../execution/live.ts");
+  const executor = new LiveExecutor({ cfg, client: oneclick, near: new Near({ network: "mainnet", keyStore: { [account]: key } }) as never, account, maxNotionalUsd: cap });
+  const symbols: Record<TradableAsset, string> = { BTC: cfg.assets.BTC.marketSymbol, NEAR: cfg.assets.NEAR.marketSymbol };
+  const runner = await Runner.open({
+    cfg, meta: { agentVersion: gitVersion(o.root), configHash: configHash(cfg) }, mode: "live",
+    feed: new MarketFeed(cfg, binance, new CandleArchive(P.candles)), executor, llm, authenticated: oneclick.authenticated, anchor,
+    keys: new FileKeys(P.keys), heartbeat: new FileHeartbeat(P.heartbeat), recordsDir: P.records, statePath: P.state, write: o.write,
+    prices: async () => {
+      const t = await binance.lastPrices(Object.values(symbols));
+      return Object.fromEntries((Object.keys(symbols) as TradableAsset[]).filter((a) => t[symbols[a]] !== undefined).map((a) => [a, t[symbols[a]]!]));
+    },
+  });
+  o.write(`NEAR Sentinel LIVE · ${account} · cap $${cap}/trade · anchoring in ${e["NEAR_GUARDRAIL_CONTRACT"]} (${e["NEAR_NETWORK"] ?? "testnet"}) · equity $${runner.state.portfolio.equityUsd.toFixed(2)} · Ctrl+C stops cleanly`);
+  runner.start();
+  const proc = o.signals ?? process;
+  return new Promise<number>((resolve) => {
+    let stopping = false;
+    const onSignal = (sig: string) => {
+      if (stopping) return;
+      stopping = true;
+      o.write(`${sig}: finishing the current step, then stopping`);
+      void runner.stop().then(() => resolve(0));
+    };
+    proc.on("SIGINT", () => onSignal("SIGINT"));
+    proc.on("SIGTERM", () => onSignal("SIGTERM"));
+  });
 }

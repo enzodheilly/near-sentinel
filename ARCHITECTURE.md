@@ -166,6 +166,8 @@ Two rules hold at every step:
 
 `pnpm paper` (`src/cli/run.ts`) runs the `paper` mode until Ctrl+C: one tick 15 s after each 1h close (a bar is never ticked twice, across restarts too), the price watcher every 60 s in between, one step at a time through a single queue. State lives in `state/paper/` (portfolio, paper balances, idempotency keys, heartbeat), candles in `data/candles/` (both git-ignored), decisions in `records/`. Ctrl+C lets the step in progress finish before exiting. `pnpm status paper` shows the paper portfolio and alerts when the heartbeat is older than 5 minutes. `pnpm live` is refused until live execution lands (#47).
 
+`pnpm live --yes-real-funds` (`src/execution/live.ts`) uses the same loop with real swaps inside NEAR Intents: quote (`dry: false`, INTENTS both sides) → `generate-intent` → the payload is **checked before signing** (signer, deadline ≤ 10 min, exactly one transfer of exactly the quoted token and amount to exactly the quoted deposit address) → NEP-413 signature with the agent's intent key (registered on `intents.near` by `scripts/setup-live-key.ts`) → `submit-intent` → status polling. It refuses to start without the on-chain guardrail (every decision is anchored first) and caps each trade at `LIVE_MAX_NOTIONAL_USD` (default $10). Balances are read from `intents.near` (`mt_batch_balance_of`). `scripts/swap-once.ts` runs one small swap through the same executor (spike P4).
+
 `replay` is the default for `pnpm demo`. When the network is available, `demo` also requests one real dry quote and prints it next to the fixture quote. If the request fails, it says so and continues.
 
 ## 8. Settlement design
