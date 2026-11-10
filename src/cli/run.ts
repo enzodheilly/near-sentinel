@@ -301,12 +301,12 @@ export async function runPaper(o: { root: string; env: NodeJS.ProcessEnv; write:
 }
 
 /** The guardrail anchor from .env (restricted agent key from scripts/setup-agent-key.ts), or undefined. */
-export async function anchorFromEnv(env: NodeJS.ProcessEnv): Promise<Anchor | undefined> {
-  const key = env["NEAR_AGENT_KEY"];
-  const agentId = env["NEAR_AGENT_ACCOUNT"];
-  const contractId = env["NEAR_GUARDRAIL_CONTRACT"];
+export async function anchorFromEnv(env: NodeJS.ProcessEnv, prefix = ""): Promise<Anchor | undefined> {
+  const key = env[`${prefix}NEAR_AGENT_KEY`];
+  const agentId = env[`${prefix}NEAR_AGENT_ACCOUNT`];
+  const contractId = env[`${prefix}NEAR_GUARDRAIL_CONTRACT`];
   if (!key || !agentId || !contractId) return undefined;
-  const network = (env["NEAR_NETWORK"] ?? "testnet") as "testnet" | "mainnet";
+  const network = (env[`${prefix}NEAR_NETWORK`] ?? "testnet") as "testnet" | "mainnet";
   const { Near } = await import("near-kit");
   const { ContractAnchor } = await import("../execution/anchor.ts");
   const near = new Near({ network, keyStore: { [agentId]: key }, defaultWaitUntil: "FINAL" });
@@ -330,9 +330,9 @@ export async function runLive(o: { root: string; env: NodeJS.ProcessEnv; args: r
     o.write("live needs AGENT_ACCOUNT and AGENT_PRIVATE_KEY in .env (scripts/setup-live-key.ts)");
     return 2;
   }
-  const anchor = await anchorFromEnv(e);
+  const anchor = await anchorFromEnv(e, "LIVE_");
   if (!anchor) {
-    o.write("live needs the on-chain guardrail: NEAR_AGENT_ACCOUNT, NEAR_GUARDRAIL_CONTRACT, NEAR_AGENT_KEY (scripts/deploy-guardrail.ts)");
+    o.write("live needs the on-chain guardrail on mainnet: LIVE_NEAR_AGENT_ACCOUNT, LIVE_NEAR_GUARDRAIL_CONTRACT, LIVE_NEAR_AGENT_KEY (scripts/deploy-guardrail.ts --network mainnet)");
     return 2;
   }
   const cap = Number(e["LIVE_MAX_NOTIONAL_USD"] ?? 10);
@@ -356,7 +356,7 @@ export async function runLive(o: { root: string; env: NodeJS.ProcessEnv; args: r
       return Object.fromEntries((Object.keys(symbols) as TradableAsset[]).filter((a) => t[symbols[a]] !== undefined).map((a) => [a, t[symbols[a]]!]));
     },
   });
-  o.write(`NEAR Sentinel LIVE · ${account} · cap $${cap}/trade · anchoring in ${e["NEAR_GUARDRAIL_CONTRACT"]} (${e["NEAR_NETWORK"] ?? "testnet"}) · equity $${runner.state.portfolio.equityUsd.toFixed(2)} · Ctrl+C stops cleanly`);
+  o.write(`NEAR Sentinel LIVE · ${account} · cap $${cap}/trade · anchoring in ${e["LIVE_NEAR_GUARDRAIL_CONTRACT"]} (${e["LIVE_NEAR_NETWORK"] ?? "mainnet"}) · equity $${runner.state.portfolio.equityUsd.toFixed(2)} · Ctrl+C stops cleanly`);
   runner.start();
   const proc = o.signals ?? process;
   return new Promise<number>((resolve) => {
