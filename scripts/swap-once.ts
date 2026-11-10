@@ -7,7 +7,7 @@
  *
  * Inside the agent's Intents balance (nothing leaves NEAR Intents). The quote must pass the same
  * pre-trade checks as the agent's (§7.2), and the payload is checked before it is signed. The evidence (quote,
- * intent payload, intent hash, status; no secret) is saved to test/live/recorded/first-intent.json.
+ * intent payload, intent hash, status; no secret) is saved under test/live/recorded/, one file per swap.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -67,11 +67,12 @@ async function main(argv: string[]): Promise<number> {
   }
   const r = await x.execute(p, q);
   log["report"] = { status: r.status, intentHash: r.intentHash, txRefs: r.txRefs, fill: r.fill, error: r.error };
-  const out = new URL("../test/live/recorded/first-intent.json", import.meta.url).pathname;
+  const name = sellNear !== undefined ? "intent-sell" : "intent-buy";
+  const out = new URL(`../test/live/recorded/${name}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`, import.meta.url).pathname;
   await mkdir(new URL("../test/live/recorded/", import.meta.url).pathname, { recursive: true });
   await writeFile(out, `${JSON.stringify(log, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v), 2)}\n`);
   console.log(`${r.status}${r.fill ? `: ${r.fill.quantityIn.toFixed(6)} → ${r.fill.quantityOut.toFixed(6)} at ${r.fill.price.toFixed(4)} USDC/NEAR` : ""}${r.error ? ` (${r.error})` : ""}`);
-  if (r.intentHash) console.log(`intent ${r.intentHash} · txs ${r.txRefs.slice(1).join(", ") || "none"} · evidence in test/live/recorded/first-intent.json`);
+  if (r.intentHash) console.log(`intent ${r.intentHash} · txs ${r.txRefs.slice(1).join(", ") || "none"} · evidence in ${out.replace(/.*\/test\//, "test/")}`);
   return r.status === "SUCCESS" ? 0 : 1;
 }
 
