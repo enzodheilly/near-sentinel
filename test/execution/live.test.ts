@@ -75,7 +75,8 @@ describe("LiveExecutor", () => {
     ["another token", (q: Quote) => intentFor({ ...q, originAsset: A.NEAR.assetId }), /tokens/],
     ["two intents", (q: Quote) => intentFor(q, { intents: [{ intent: "transfer", receiver_id: DEPOSIT, tokens: { [q.originAsset]: q.amountIn.toString() } }, { intent: "transfer", receiver_id: "x", tokens: {} }] }), /exactly one/],
     ["another signer", (q: Quote) => intentFor(q, { signer_id: "someone.near" }), /signer_id/],
-    ["a far deadline", (q: Quote) => intentFor(q, { deadline: new Date(NOW + 86_400_000).toISOString() }), /deadline/],
+    ["a far deadline", (q: Quote) => intentFor(q, { deadline: new Date(NOW + 5 * 86_400_000).toISOString() }), /deadline/],
+    ["a past deadline", (q: Quote) => intentFor(q, { deadline: new Date(NOW - 1000).toISOString() }), /deadline/],
   ])("refuses to sign a payload with %s", async (_n, intent, why) => {
     const { x, signs, calls } = fakes({ intent });
     const r = await x.execute(entry, await x.quote(entry, 50));
@@ -106,9 +107,10 @@ describe("LiveExecutor", () => {
     expect((calls[0]!.body as QuoteRequest).amount).toBe(held.toString());
   });
 
-  it("checkIntentPayload accepts the exact transfer", () => {
+  it("checkIntentPayload accepts the exact transfer, with 1Click's 72 h deadline", () => {
     const q = { originAsset: A.USDC.assetId, amountIn: 5_000_000n, depositAddress: DEPOSIT } as Quote;
     expect(checkIntentPayload(intentFor(q), q, AGENT, NOW)).toEqual([]);
+    expect(checkIntentPayload(intentFor(q, { deadline: new Date(NOW + 72 * 3_600_000).toISOString() }), q, AGENT, NOW)).toEqual([]);
   });
 });
 
