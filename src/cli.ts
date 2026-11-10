@@ -7,13 +7,13 @@
  *   status                    positions, limits and today's PnL from the last recorded state
  *   explorer                  build explorer/dist/index.html from the records
  *   paper                     run on the live market with dry quotes and simulated fills, until Ctrl+C
- *   live                      refused until live execution through NEAR Intents lands (#47)
+ *   live --yes-real-funds     real swaps inside NEAR Intents, each decision anchored first, capped per trade
  */
 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDemo } from "./cli/demo.ts";
-import { paperPaths, runPaper } from "./cli/run.ts";
+import { paperPaths, runLive, runPaper } from "./cli/run.ts";
 import { runStatus } from "./cli/status.ts";
 import { runVerify } from "./cli/verify.ts";
 import { runExplorer } from "./explorer/build.ts";
@@ -64,8 +64,8 @@ async function main(): Promise<number> {
       loadEnv();
       return runPaper({ root, env: process.env, write });
     case "live":
-      write("live mode is not available yet: live execution through NEAR Intents is ticket #47. Use pnpm paper.");
-      return 2;
+      loadEnv();
+      return runLive({ root, env: process.env, args: argv, write });
     default:
       write("usage: pnpm demo | pnpm verify <hash>|--all | pnpm status [paper] | pnpm explorer | pnpm paper");
       return cmd === undefined || cmd === "help" ? 0 : 2;

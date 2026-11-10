@@ -9,8 +9,8 @@
  * - The partner key goes in `X-API-Key` when present (without it, 1Click adds 0.25% to the fee).
  * - A User-Agent is always sent: Cloudflare in front of 1Click refuses some default client agents (error 1010).
  *
- * `generate-intent` (the step that prepares a NEP-413 payload to sign in INTENTS mode) is not here yet: its
- * schema could not be confirmed from the documentation and it is only needed for live execution (#47).
+ * INTENTS mode (live, #47): quote (dry: false) → generate-intent with the quote's depositAddress → sign the
+ * returned NEP-413 payload → submit-intent → poll status. Schemas from /docs/v0/openapi.yaml.
  */
 
 import { z } from "zod";
@@ -97,6 +97,16 @@ export const statusResponseSchema = z.object({
 });
 export type StatusResponse = z.infer<typeof statusResponseSchema>;
 
+/** The unsigned NEP-413 payload 1Click prepares for a swap_transfer (MultiPayloadNarrowed, nep413 variant). */
+export const generateIntentResponseSchema = z.object({
+  intent: z.object({
+    standard: z.literal("nep413"),
+    payload: z.object({ message: z.string().min(2), nonce: z.string().min(1), recipient: z.string().min(1), callbackUrl: z.string().nullish() }),
+  }),
+  correlationId: z.string(),
+});
+export type GenerateIntentResponse = z.infer<typeof generateIntentResponseSchema>;
+
 export const submitIntentResponseSchema = z.object({ intentHash: z.string().min(1), correlationId: z.string() });
 export type SubmitIntentResponse = z.infer<typeof submitIntentResponseSchema>;
 
@@ -165,6 +175,11 @@ export class OneClickClient {
   status(depositAddress: string, depositMemo?: string): Promise<StatusResponse> {
     const q = new URLSearchParams({ depositAddress, ...(depositMemo ? { depositMemo } : {}) });
     return this.call("GET /v0/status", `/v0/status?${q}`, undefined, statusResponseSchema);
+  }
+
+  /** Prepares the intent that moves the quoted input to the quote's depositAddress (INTENTS mode). */
+  generateIntent(depositAddress: string, signerId: string): Promise<GenerateIntentResponse> {
+    return this.call("POST /v0/generate-intent", "/v0/generate-intent", { type: "swap_transfer", standard: "nep413", signerId, depositAddress }, generateIntentResponseSchema);
   }
 
   submitIntent(signedData: Nep413Signed): Promise<SubmitIntentResponse> {
