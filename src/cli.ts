@@ -54,8 +54,16 @@ async function main(): Promise<number> {
       const anchor = new ContractAnchor({ near: new Near({ network }) as never, contractId: contract, agentId: "" });
       return runVerify({ root, records: out, args, write, anchored: (h) => anchor.lookup(h) });
     }
-    case "explorer":
-      return runExplorer({ root, records: out, write });
+    case "explorer": {
+      loadEnv(); // NEAR_GUARDRAIL_CONTRACT / NEAR_NETWORK: check each paper record's on-chain anchor
+      const contract = process.env["NEAR_GUARDRAIL_CONTRACT"];
+      if (!contract) return runExplorer({ root, records: out, write });
+      const network = (process.env["NEAR_NETWORK"] ?? "testnet") as "testnet" | "mainnet";
+      const { Near } = await import("near-kit");
+      const { ContractAnchor } = await import("./execution/anchor.ts");
+      const a = new ContractAnchor({ near: new Near({ network }) as never, contractId: contract, agentId: "" });
+      return runExplorer({ root, records: out, write, anchor: { contract, network, lookup: (h) => a.lookup(h) } });
+    }
     case "status":
       return args.includes("paper")
         ? runStatus({ statePath: paperPaths(root).state, heartbeatPath: paperPaths(root).heartbeat, records: out, write })

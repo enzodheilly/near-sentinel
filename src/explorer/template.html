@@ -206,7 +206,7 @@ function tabs() {
   const box = $("#tabs");
   box.replaceChildren(...DATA.scenarios.map((s, i) =>
     el("button", { class: "tab", role: "tab", type: "button", "aria-selected": String(i === current), onclick: () => { current = i; selected = null; showQuiet = false; render(); } },
-      s.kind === "ENTRY" ? "Scenario 1 · a trade" : "Scenario 2 · a refusal")));
+      s.kind === "ENTRY" ? "Scenario 1 · a trade" : s.kind === "REJECT" ? "Scenario 2 · a refusal" : "Live market · paper run")));
 }
 
 function story() {
@@ -217,7 +217,15 @@ function story() {
   const key = ds.find((d) => d.record.barTime === s.signalBarTime && d.record.asset === s.asset);
   const pnl = s.endEquity - s.startEquity;
   const kpis = [];
-  if (s.kind === "ENTRY") {
+  if (s.kind === "PAPER") {
+    const refusals = ds.filter((d) => d.record.outcome.action === "REJECT");
+    const checked = ds.filter((d) => d.anchor !== undefined);
+    const anchored = ds.filter((d) => d.anchor);
+    kpis.push(["Running since", when(ds[0].record.barTime), `${s.bars} hourly bars, BTC and NEAR`, ""]);
+    kpis.push(["Refusals", String(refusals.length), refusals.length ? [...new Set(refusals.map((d) => label[d.record.outcome.reason] || d.record.outcome.reason))].join(" · ") : "no setup reached the rules", refusals.length ? "warn" : ""]);
+    kpis.push(["Trades", String(trades.length), trades.length ? "" : "no setup passed every rule: cash kept", "ok"]);
+    if (checked.length) kpis.push(["Anchored on chain", `${anchored.length} / ${ds.length}`, `${checked[0].anchor ? checked[0].anchor.contract : (anchored[0] && anchored[0].anchor.contract) || "guardrail"}`, anchored.length ? "ok" : "warn"]);
+  } else if (s.kind === "ENTRY") {
     const e = trades.find((d) => d.record.outcome.proposal.kind === "ENTRY");
     const risk = e ? e.record.outcome.proposal.riskUsd : 0;
     kpis.push(["Breakout", when(s.signalBarTime), `${s.asset}, 4 independent signals`, ""]);
@@ -312,7 +320,7 @@ function chart() {
     }
     box.append(g);
   }
-  $("#chart-sub").textContent = `${when(c[0][0])} → ${when(c[c.length - 1][0])} UTC · Binance spot candles, frozen`;
+  $("#chart-sub").textContent = `${when(c[0][0])} → ${when(c[c.length - 1][0])} UTC · Binance spot candles, ${s.kind === "PAPER" ? "archived live by the agent" : "frozen"}`;
   const lg = [["--mint", "entry ▲ / targets"], ["--amber", "exit ▼ / refusal ✕"], ["--red", "stop"]];
   $("#legend").replaceChildren(...lg.map(([v, t]) => el("span", {}, el("i", { style: `border-color:${col(v)}` }), t)));
 }
@@ -365,7 +373,9 @@ function detail() {
     ? `${llm.attestation ? llm.attestation.status : "signed"} · ${llm.signatureKind || "?"} · ${llm.signingAddress || ""}`
     : llm.chatId ? `none (${llm.attestation ? llm.attestation.problems.join("; ") : "not recorded"})` : "none: replay mode, no model was called"]);
   if (llm && llm.fallbackReason) facts.push(["LLM fallback", llm.fallbackReason]);
-  facts.push(["On-chain anchor", "not anchored (replay; the guardrail contract anchors live decisions)"]);
+  facts.push(["On-chain anchor", d.anchor ? `decision #${d.anchor.seq} in ${d.anchor.contract} (${d.anchor.network}), written ${new Date(d.anchor.at).toISOString().slice(0, 19).replace("T", " ")} UTC, before any execution`
+    : d.anchor === null ? "not on chain (recorded before the guardrail was deployed, or not anchored)"
+    : s.kind === "PAPER" ? "not checked at build time" : "not anchored (replay; the guardrail contract anchors paper and live decisions)"]);
   facts.push(["Record hash", d.hash]);
   facts.push(["Verification", d.verified ? "✓ recomputed from its inputs: same record, byte for byte" : "✗ " + d.problems.join(" · ")]);
   const dl = el("dl", { class: "facts" });
@@ -385,14 +395,14 @@ function detail() {
     sig ? el("h2", {}, "Signals on this bar", el("span", { text: `${r.signals.length}` })) : null, sig,
     chk ? el("h2", {}, "Rules checked", el("span", { text: `${r.checks.filter((x) => x.ok).length} of ${r.checks.length} passed` })) : null, chk,
     el("h2", {}, "Check it yourself"),
-    el("div", { class: "cmd" }, el("span", { text: `pnpm verify ${d.hash}` })),
+    el("div", { class: "cmd" }, el("span", { text: `pnpm verify ${d.hash}${d.anchor ? ` --anchor ${d.anchor.contract} --network ${d.anchor.network}` : ""}` })),
     el("div", { class: "note", text: "Recomputes this decision from its inputs (candles, portfolio, quotes) with the configuration named by its hash, and compares byte for byte. Or simply: sha256sum records/" + short(d.hash) + ".json gives back its name." }),
   );
 }
 
 function footer() {
   $("#footer").replaceChildren(
-    el("div", { text: `Built from ${DATA.scenarios.reduce((a, s) => a + s.decisions.length, 0)} decision records read back from disk and verified at build time. Replay mode: frozen Binance candles, fixture quotes at the reference price, simulated fills; no model is called (live model: ${DATA.llmModel}).` }),
+    el("div", { text: `Built from ${DATA.scenarios.reduce((a, s) => a + s.decisions.length, 0)} decision records read back from disk and verified at build time. Scenarios 1–2 replay frozen Binance candles with simulated fills and no model call. The paper run is the agent on the live market: live candles, real 1Click quotes, simulated fills, the attested LLM (${DATA.llmModel}) when a setup reaches it, and each decision anchored in the guardrail contract before execution.` }),
   );
 }
 
