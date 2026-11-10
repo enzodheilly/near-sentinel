@@ -1,0 +1,104 @@
+{
+  "at": "2026-11-10T21:30:37.526Z",
+  "account": "near-sentinel-enzo-agent.near",
+  "usdc": 5,
+  "direction": "buy NEAR with 5 USDC",
+  "quote": {
+    "correlationId": "95e581ea-5b46-4c3d-b7e6-497e41d2fd34",
+    "timestamp": "2026-11-10T21:30:37.890Z",
+    "signature": "ed25519:1gvA34VnBgkUR1uLV15iTSthPkjqDVsVfkSghw3UvZCLuVVwPp65SHFLEfrYvfMbUsU1U3HXAternvxSrfr5Nyz",
+    "quoteRequest": {
+      "dry": false,
+      "depositMode": "SIMPLE",
+      "swapType": "EXACT_INPUT",
+      "slippageTolerance": 50,
+      "originAsset": "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "depositType": "INTENTS",
+      "destinationAsset": "nep141:wrap.near",
+      "amount": "5000000",
+      "refundTo": "near-sentinel-enzo-agent.near",
+      "refundType": "INTENTS",
+      "recipient": "near-sentinel-enzo-agent.near",
+      "recipientType": "INTENTS",
+      "deadline": "2026-11-10T21:32:37.844Z",
+      "confidentiality": "public",
+      "quoteWaitingTimeMs": 0,
+      "insured": false,
+      "appFees": [
+        {
+          "recipient": "5880ad2b362620fadf759cbceb1cd5737ce8c6ed7fb8e9942881e6731f9247dd",
+          "fee": 20,
+          "limitOrderId": null
+        }
+      ]
+    },
+    "quote": {
+      "depositAddress": "a9988a042e8f98ffc9e93356ac6a66748f3ca909055bbeb165e54655d400d1ee",
+      "amountIn": "5000000",
+      "amountInFormatted": "5.0",
+      "amountInUsd": "4.997915000000",
+      "minAmountIn": "5000000",
+      "amountOut": "1405974419933393149140117",
+      "amountOutFormatted": "1.405974419933393149140117",
+      "amountOutUsd": "4.991209190764",
+      "minAmountOut": "1398944547833726183394416",
+      "deadline": "2026-11-13T21:32:37.844Z",
+      "timeWhenInactive": "2026-11-13T21:32:37.844Z",
+      "timeEstimate": 12
+    }
+  },
+  "intent": {
+    "intent": {
+      "standard": "nep413",
+      "payload": {
+        "message": "{\"deadline\":\"2026-11-13T21:32:37.844Z\",\"intents\":[{\"intent\":\"transfer\",\"receiver_id\":\"a9988a042e8f98ffc9e93356ac6a66748f3ca909055bbeb165e54655d400d1ee\",\"tokens\":{\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\":\"5000000\"}}],\"signer_id\":\"near-sentinel-enzo-agent.near\"}",
+        "nonce": "Vij2xgAlKBKzAL07Iz+45xiUyZtfZ2oTGWK7bWmgmq0=",
+        "recipient": "intents.near"
+      }
+    },
+    "correlationId": "fb7382cd-cafc-4b30-86b8-e29a68ef35b0"
+  },
+  "signed": {
+    "standard": "nep413",
+    "public_key": "ed25519:9VyivkwbmxrH5z1VrpGNQtSrAiVVRRWadeb7haSPvYVq"
+  },
+  "submitted": {
+    "intentHash": "G86AnT8awmtcnVLpEom8hrPhPK5egweyJWPkqHHhMJK",
+    "correlationId": "488e29f0-33a3-4d35-a9e4-3ad7faf1c8f6"
+  },
+  "status": {
+    "correlationId": "04b3e146-2243-4a33-8c85-9d0f5417eed0",
+    "status": "SUCCESS",
+    "updatedAt": "2026-11-10T21:31:02.000Z",
+    "swapDetails": {
+      "amountIn": "5000000",
+      "amountInFormatted": "5.0",
+      "amountOut": "1405578147548969983089063",
+      "amountOutFormatted": "1.405578147548969983089063",
+      "slippage": 3,
+      "originChainTxHashes": [],
+      "destinationChainTxHashes": [
+        {
+          "hash": "BZw8CY6j9sZU2ymZzT1tzw3NUofuV1KiLm5j8k3xNNkj",
+          "explorerUrl": ""
+        }
+      ],
+      "refundedAmount": "0",
+      "refundReason": null,
+      "depositedAmount": "5000000"
+    }
+  },
+  "report": {
+    "status": "SUCCESS",
+    "intentHash": "G86AnT8awmtcnVLpEom8hrPhPK5egweyJWPkqHHhMJK",
+    "txRefs": [
+      "G86AnT8awmtcnVLpEom8hrPhPK5egweyJWPkqHHhMJK",
+      "BZw8CY6j9sZU2ymZzT1tzw3NUofuV1KiLm5j8k3xNNkj"
+    ],
+    "fill": {
+      "quantityIn": 5,
+      "quantityOut": 1.4055781475489701,
+      "price": 3.557255075940771
+    }
+  }
+}
