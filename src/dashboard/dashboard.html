@@ -446,11 +446,11 @@ if (renderer) {
   for (const sx of [-1.25, 1.25]) for (const sz of [-0.55, 0.55]) at(box(0.05, 1.0, 0.05, metal), sx, -0.53, sz, desk);
   const TOP = 0.035;
 
-  // two screens on arms, angled toward the trader; NEAR logo on their backs
+  // two screens on stands, toward the trader
   const screens = [];
   for (const s of [-1, 1]) {
     // side by side in front of the robot, screens toward it (-z), outer edges turned in a little.
-    // Seen from the front we get their backs: a casing with a NEAR logo and a soft glow leaking around the edges.
+    // Seen from the front we get their backs: a casing and a soft glow leaking around the edges.
     const mon = at(new THREE.Group(), 0.335 * s, TOP, 0.34, desk);
     mon.rotation.y = Math.PI + 0.2 * s;
     at(box(0.045, 0.16, 0.045, metal), 0, 0.08, -0.03, mon);
@@ -461,7 +461,6 @@ if (renderer) {
     const tex = canvasTex(512, 310);
     at(new THREE.Mesh(new THREE.PlaneGeometry(0.63, 0.36), new THREE.MeshBasicMaterial({ map: tex.t, toneMapped: false })), 0, 0, 0.016, panel);
     const leak = at(new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.47), new THREE.MeshBasicMaterial({ color: 0x00ec97, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false })), 0, 0, 0.02, panel);
-    const back = logoPlane(0.11); back.rotation.y = Math.PI; at(back, 0, 0, -0.061, panel);
     const light = at(new THREE.PointLight(0x00ec97, 0.6, 1.6), 0, 0, 0.3, panel);
     screens.push({ tex, light, leak });
   }
