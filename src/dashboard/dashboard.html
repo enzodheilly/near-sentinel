@@ -449,18 +449,21 @@ if (renderer) {
   // two screens on arms, angled toward the trader; NEAR logo on their backs
   const screens = [];
   for (const s of [-1, 1]) {
-    // side by side in front of the robot, screens toward it (-z), outer edges turned in a little
-    const mon = at(new THREE.Group(), 0.41 * s, TOP, 0.42, desk);
-    mon.rotation.y = Math.PI + 0.24 * s;
-    at(box(0.05, 0.24, 0.05, metal), 0, 0.12, 0, mon);
-    at(box(0.26, 0.015, 0.18, metal), 0, 0.008, 0, mon);
-    const panel = at(new THREE.Group(), 0, 0.45, 0.02, mon);
-    panel.add(box(0.78, 0.47, 0.035, dark));
+    // side by side in front of the robot, screens toward it (-z), outer edges turned in a little.
+    // Seen from the front we get their backs: a casing with a NEAR logo and a soft glow leaking around the edges.
+    const mon = at(new THREE.Group(), 0.335 * s, TOP, 0.34, desk);
+    mon.rotation.y = Math.PI + 0.2 * s;
+    at(box(0.045, 0.16, 0.045, metal), 0, 0.08, -0.03, mon);
+    at(box(0.22, 0.015, 0.16, metal), 0, 0.008, 0, mon);
+    const panel = at(new THREE.Group(), 0, 0.33, 0.0, mon);
+    panel.add(box(0.66, 0.39, 0.03, dark));
+    at(box(0.34, 0.22, 0.05, mat(0x33414b, { roughness: 0.45, metalness: 0.3 })), 0, -0.01, -0.035, panel);
     const tex = canvasTex(512, 310);
-    at(new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.43), new THREE.MeshBasicMaterial({ map: tex.t, toneMapped: false })), 0, 0, 0.019, panel);
-    const back = logoPlane(0.14); back.rotation.y = Math.PI; at(back, 0, 0.02, -0.019, panel);
+    at(new THREE.Mesh(new THREE.PlaneGeometry(0.63, 0.36), new THREE.MeshBasicMaterial({ map: tex.t, toneMapped: false })), 0, 0, 0.016, panel);
+    const leak = at(new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.47), new THREE.MeshBasicMaterial({ color: 0x00ec97, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false })), 0, 0, 0.02, panel);
+    const back = logoPlane(0.11); back.rotation.y = Math.PI; at(back, 0, 0, -0.061, panel);
     const light = at(new THREE.PointLight(0x00ec97, 0.6, 1.6), 0, 0, 0.3, panel);
-    screens.push({ tex, light });
+    screens.push({ tex, light, leak });
   }
   // keyboard and mouse
   const kb = at(box(0.62, 0.025, 0.2, dark), 0, TOP + 0.012, 0.02, desk);
@@ -477,7 +480,7 @@ if (renderer) {
     padTex.t.needsUpdate = true;
   };
   drawPadBase();
-  const pad = at(new THREE.Group(), -0.48, TOP + 0.004, -0.16, desk); pad.rotation.y = 0.3;
+  const pad = at(new THREE.Group(), -0.78, TOP + 0.004, -0.12, desk); pad.rotation.y = 0.35;
   at(new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.44), new THREE.MeshStandardMaterial({ map: padTex.t, roughness: 0.9 })), 0, 0, 0, pad).rotation.x = -Math.PI / 2;
   const pencil = sc(new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.17, 10), mat(0xffb547, { roughness: 0.6 })));
   const tip = at(new THREE.Mesh(new THREE.ConeGeometry(0.009, 0.025, 10), mat(0x222222)), 0, -0.097, 0, pencil); tip.rotation.x = Math.PI;
@@ -577,8 +580,8 @@ if (renderer) {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     renderer.setSize(w, h, false); camera.aspect = w / h;
     const narrow = w / h < 1.1;
-    camera.position.set(narrow ? 2.0 : 2.6, 2.1, narrow ? 8.8 : 7.0);
-    camera.lookAt(0, 0.0, 0);
+    camera.position.set(narrow ? 1.6 : 2.0, 3.1, narrow ? 8.6 : 6.9);
+    camera.lookAt(0, -0.05, 0);
     camera.updateProjectionMatrix();
   };
   resize(); new ResizeObserver(resize).observe(canvas);
@@ -591,10 +594,10 @@ if (renderer) {
     const mood = (window.__agent && window.__agent.mood) || "boot";
     const col = colors[mood] ?? colors.work;
     visorMat.emissive.setHex(col); rim.color.setHex(col);
-    for (const s of screens) s.light.color.setHex(col), (s.light.intensity = mood === "sleep" ? 0.05 : 0.6);
+    for (const s of screens) s.light.color.setHex(col), s.leak.material.color.setHex(col), (s.light.intensity = mood === "sleep" ? 0.05 : 0.6), (s.leak.visible = mood !== "sleep");
     visorMat.emissiveIntensity = mood === "sleep" ? 0.2 : 1.3 + 0.25 * Math.sin(t * 2.4);
     const working = mood === "work" || mood === "boot";
-    world.rotation.y = (RY ?? 2.45) + 0.03 * Math.sin(t * 0.25);
+    world.rotation.y = (RY ?? 0.3) + 0.03 * Math.sin(t * 0.25);
     bot.position.y = mood === "sleep" ? -0.04 : 0.008 * Math.sin(t * 1.6);
     world.updateMatrixWorld(true);
 
@@ -651,7 +654,7 @@ if (renderer) {
     // head: reads the screens, follows the pencil, glances at us, sleeps when stopped
     const glance = working && phase === "type" && c > 6.5 && c < 8;
     head.rotation.x = mood === "sleep" ? 0.42 : phase === "write" || phase === "carry" ? 0.32 : glance ? -0.08 : 0.04 + 0.015 * Math.sin(t * 7);
-    head.rotation.y = mood === "sleep" ? 0 : phase === "write" || phase === "carry" ? -0.55 : glance ? -1.15 : mood === "alert" ? -0.7 : 0.22 * Math.sin(t * 0.35);
+    head.rotation.y = mood === "sleep" ? 0 : phase === "write" || phase === "carry" ? -0.55 : glance ? 0.5 : mood === "alert" ? 0.4 : 0.22 * Math.sin(t * 0.35);
     torso.rotation.x = mood === "sleep" ? 0.12 : 0;
 
     if (Math.floor(t * 4) !== lastScreen) { lastScreen = Math.floor(t * 4); drawScreens(t, mood); }
