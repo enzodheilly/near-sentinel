@@ -17,3 +17,21 @@ Each set holds 301 one-hour candles per symbol (200 warm-up bars, the signal bar
 - The `event` block of each manifest is the selection tool's own reading of the signal bar. It is provenance, not ground truth: the engine's golden test compares against `kind`, `reason`, `confirmations` and `vetoes` only.
 
 Do not edit these files. To change a fixture, freeze a new one and update its manifest.
+
+## Data license (not the code's)
+
+These candles are Binance market data. Binance Vision's terms license its datasets under **CC BY-NC-SA 4.0**
+(clause 3.1), allow non-commercial open-source use (clause 4.1) and require redistributed derivative works to
+credit Binance Vision and keep the same license (clause 4.5); commercial use needs a separate licence (clause 3.4)
+([Binance Vision Terms of Use](https://data.binance.vision/Binance_Vision-Terms_of_Use.pdf)). So:
+
+- **Attribution:** market data © Binance, from Binance Vision / `data-api.binance.vision`.
+- **License of the files in `fixtures/`** (and of candles embedded in the decision explorer): CC BY-NC-SA 4.0,
+  https://creativecommons.org/licenses/by-nc-sa/4.0/. Non-commercial use only.
+- The NEAR Sentinel **code** keeps its own license; this note covers only the market data.
+- We keep the minimum: two windows of 301 hourly candles per symbol, needed to make every demo decision
+  re-verifiable offline. Live candles (`data/candles/`) are never committed.
+
+If the data cannot stay public, the fallback is to delete these files and fetch the same windows from
+`data-api.binance.vision`: `manifest.json` already pins each file's SHA-256, so a re-fetched file is checked byte
+for byte before use.
