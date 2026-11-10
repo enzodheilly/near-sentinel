@@ -1,0 +1,80 @@
+/**
+ * `pnpm dashboard`: a local, read-only web page that follows the running agent (http://127.0.0.1:4747).
+ *
+ * - Listens on 127.0.0.1 only; GET only (anything else is 405); no wallet, no keys used, no action.
+ * - /api/state is rebuilt at most every 10 s (files + a few on-chain views); anchors are cached per hash.
+ * - The page refreshes itself every 15 s.
+ */
+
+import { readFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildDashboardState, type ChainReader, type DashboardState, type DecisionView } from "./state.ts";
+
+export function nearKitReader(): ChainReader {
+  const clients = new Map<string, Promise<{ view: <T>(c: string, m: string, a: object) => Promise<T | undefined> }>>();
+  const get = (network: "testnet" | "mainnet") => {
+    if (!clients.has(network)) clients.set(network, import("near-kit").then(({ Near }) => new Near({ network }) as never));
+    return clients.get(network)!;
+  };
+  return { view: async (network, contract, method, args) => (await get(network)).view(contract, method, args) };
+}
+
+export interface DashboardServerOptions {
+  readonly root: string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly port?: number;
+  readonly chain?: ChainReader;
+  readonly clock?: () => number;
+  readonly cacheMs?: number;
+}
+
+export async function startDashboard(o: DashboardServerOptions): Promise<{ server: Server; url: string }> {
+  const page = await readFile(join(dirname(fileURLToPath(import.meta.url)), "dashboard.html"), "utf8");
+  const clock = o.clock ?? Date.now;
+  const anchorCache = new Map<string, DecisionView["anchor"]>();
+  let cached: { at: number; body: string } | undefined;
+  let building: Promise<string> | undefined;
+
+  const state = async (): Promise<string> => {
+    const now = clock();
+    if (cached && now - cached.at < (o.cacheMs ?? 10_000)) return cached.body;
+    building ??= buildDashboardState({ root: o.root, env: o.env, ...(o.chain ? { chain: o.chain } : {}), now, anchorCache })
+      .then((s: DashboardState) => {
+        const body = JSON.stringify(s, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
+        cached = { at: now, body };
+        return body;
+      })
+      .finally(() => (building = undefined));
+    return building;
+  };
+
+  const server = createServer((req, res) => {
+    const headers = {
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+      "content-security-policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'",
+    };
+    if (req.method !== "GET") {
+      res.writeHead(405, { ...headers, allow: "GET" }).end("read-only");
+      return;
+    }
+    const path = (req.url ?? "/").split("?")[0];
+    if (path === "/") {
+      res.writeHead(200, { ...headers, "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }).end(page);
+    } else if (path === "/api/state") {
+      state().then(
+        (body) => res.writeHead(200, { ...headers, "content-type": "application/json", "cache-control": "no-store" }).end(body),
+        (e) => res.writeHead(500, { ...headers, "content-type": "application/json" }).end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) })),
+      );
+    } else {
+      res.writeHead(404, headers).end("not found");
+    }
+  });
+  const port = o.port ?? 4747;
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+  const addr = server.address();
+  const url = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : port}`;
+  return { server, url };
+}

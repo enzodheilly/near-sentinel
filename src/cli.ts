@@ -7,6 +7,7 @@
  *   status                    positions, limits and today's PnL from the last recorded state
  *   explorer                  build explorer/dist/index.html from the records
  *   paper                     run on the live market with dry quotes and simulated fills, until Ctrl+C
+ *   dashboard [--port 4747]   local read-only live view of the agent (http://127.0.0.1:4747)
  *   live --yes-real-funds     real swaps inside NEAR Intents, each decision anchored first, capped per trade
  */
 
@@ -21,7 +22,7 @@ import { runExplorer } from "./explorer/build.ts";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const write = (l: string) => process.stdout.write(`${l}\n`);
 const [cmd, ...argv] = process.argv.slice(2);
-const VALUED = new Set(["--records", "--anchor", "--network"]); // flags followed by a value
+const VALUED = new Set(["--records", "--anchor", "--network", "--port"]); // flags followed by a value
 const flag = (name: string, fallback: string) => {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 && argv[i + 1] ? resolve(argv[i + 1]!) : fallback;
@@ -71,11 +72,19 @@ async function main(): Promise<number> {
     case "paper":
       loadEnv();
       return runPaper({ root, env: process.env, write });
+    case "dashboard": {
+      loadEnv();
+      const { startDashboard, nearKitReader } = await import("./dashboard/server.ts");
+      const i = argv.indexOf("--port");
+      const { url } = await startDashboard({ root, env: process.env, chain: nearKitReader(), ...(i >= 0 ? { port: Number(argv[i + 1]) } : {}) });
+      write(`NEAR Sentinel dashboard (read-only): ${url} · Ctrl+C to stop`);
+      return new Promise<number>(() => {}); // runs until Ctrl+C
+    }
     case "live":
       loadEnv();
       return runLive({ root, env: process.env, args: argv, write });
     default:
-      write("usage: pnpm demo | pnpm verify <hash>|--all | pnpm status [paper] | pnpm explorer | pnpm paper");
+      write("usage: pnpm demo | pnpm verify <hash>|--all | pnpm status [paper] | pnpm explorer | pnpm paper | pnpm dashboard");
       return cmd === undefined || cmd === "help" ? 0 : 2;
   }
 }

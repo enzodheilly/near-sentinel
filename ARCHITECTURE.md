@@ -168,6 +168,8 @@ Two rules hold at every step:
 
 `pnpm live --yes-real-funds` (`src/execution/live.ts`) uses the same loop with real swaps inside NEAR Intents: quote (`dry: false`, INTENTS both sides) → `generate-intent` → the payload is **checked before signing** (signer, deadline ≤ 96 h — 1Click sets 72 h —, exactly one transfer of exactly the quoted token and amount to exactly the quoted deposit address) → NEP-413 signature with the agent's intent key (registered on `intents.near` by `scripts/setup-live-key.ts`) → `submit-intent` → status polling. It refuses to start without the on-chain guardrail (every decision is anchored first) and caps each trade at `LIVE_MAX_NOTIONAL_USD` (default $10). Balances are read from `intents.near` (`mt_batch_balance_of`). `scripts/swap-once.ts` runs one small swap through the same executor (spike P4).
 
+`pnpm dashboard` (`src/dashboard/`) serves a local, read-only live view on `127.0.0.1:4747`: paper and live agents (heartbeat, equity, balances, positions, kill switch), each guardrail's policy, day usage and anchored count read from chain, the live agent's NEAR Intents balances, and the last 7 days of decisions with their on-chain anchors. GET only, strict CSP, refresh every 15 s; it never signs or acts.
+
 `replay` is the default for `pnpm demo`. When the network is available, `demo` also requests one real dry quote and prints it next to the fixture quote. If the request fails, it says so and continues.
 
 ## 8. Settlement design
