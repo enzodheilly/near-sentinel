@@ -128,3 +128,31 @@ describe("pnpm live refuses to start unsafely", () => {
     expect(out.pop()).toMatch(/on-chain guardrail/);
   });
 });
+
+describe("NEP-413 signature for the intents verifier", () => {
+  it("a real near-kit signature (base64) becomes ed25519:<base58> of the same 64 bytes, and verifies", async () => {
+    const { Near, generateKey } = await import("near-kit");
+    const { intentsSignature, base58 } = await import("../../src/execution/live.ts");
+    const { createHash, createPublicKey, verify } = await import("node:crypto");
+    const kp = generateKey();
+    const near = new Near({ network: "mainnet", keyStore: { [AGENT]: kp.secretKey } });
+    const nonce = new Uint8Array(32).fill(9);
+    const s = await near.signMessage({ message: '{"signer_id":"x"}', recipient: "intents.near", nonce }, { signerId: AGENT });
+    const sig = intentsSignature(s.signature);
+    expect(sig).toMatch(/^ed25519:[1-9A-HJ-NP-Za-km-z]{80,90}$/);
+    expect(sig).toBe(`ed25519:${base58(Buffer.from(s.signature, "base64"))}`);
+    expect(intentsSignature(sig)).toBe(sig); // already in the right form
+    // the bytes still verify: NEP-413 = sha256(borsh(tag 2^31+413, message, nonce, recipient, callbackUrl none))
+    const str = (x: string) => { const b = Buffer.from(x); const l = Buffer.alloc(4); l.writeUInt32LE(b.length); return Buffer.concat([l, b]); };
+    const tag = Buffer.alloc(4); tag.writeUInt32LE(2 ** 31 + 413);
+    const hash = createHash("sha256").update(Buffer.concat([tag, str('{"signer_id":"x"}'), Buffer.from(nonce), str("intents.near"), Buffer.from([0])])).digest();
+    const pub = createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from((kp.publicKey as unknown as { data: Uint8Array }).data)]), format: "der", type: "spki" });
+    expect(verify(null, hash, pub, Buffer.from(s.signature, "base64"))).toBe(true);
+  });
+
+  it("base58 matches known vectors", async () => {
+    const { base58 } = await import("../../src/execution/live.ts");
+    expect(base58(Buffer.from("hello world"))).toBe("StV1DL6CwTryKyV");
+    expect(base58(Uint8Array.from([0, 0, 1]))).toBe("112");
+  });
+});

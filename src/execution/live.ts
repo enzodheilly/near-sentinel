@@ -129,7 +129,7 @@ export class LiveExecutor implements Executor {
     );
     const signedData: Nep413Signed = {
       standard: "nep413", payload: { message: pl.message, nonce: pl.nonce, recipient: pl.recipient, ...(pl.callbackUrl ? { callbackUrl: pl.callbackUrl } : {}) },
-      public_key: signed.publicKey as `ed25519:${string}`, signature: signed.signature as `ed25519:${string}`,
+      public_key: signed.publicKey as `ed25519:${string}`, signature: intentsSignature(signed.signature),
     };
     let intentHash: string;
     try {
@@ -176,3 +176,30 @@ export class LiveExecutor implements Executor {
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+export function base58(bytes: Uint8Array): string {
+  let n = 0n;
+  for (const b of bytes) n = n * 256n + BigInt(b);
+  let out = "";
+  while (n > 0n) {
+    out = B58[Number(n % 58n)]! + out;
+    n /= 58n;
+  }
+  for (const b of bytes) {
+    if (b !== 0) break;
+    out = "1" + out;
+  }
+  return out;
+}
+
+/**
+ * Intents wants `ed25519:<base58>` for the signature (MultiPayload nep413). Wallets and near-kit return NEP-413
+ * signatures base64-encoded (the NEP-413 wallet convention): normalise to what the verifier accepts.
+ */
+export function intentsSignature(sig: string): `ed25519:${string}` {
+  if (sig.startsWith("ed25519:")) return sig as `ed25519:${string}`;
+  const bytes = Buffer.from(sig, "base64");
+  if (bytes.length !== 64) throw new Error(`unexpected NEP-413 signature length ${bytes.length}`);
+  return `ed25519:${base58(bytes)}`;
+}
