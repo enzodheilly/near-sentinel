@@ -245,11 +245,14 @@ export async function runPaper(o: { root: string; env: NodeJS.ProcessEnv; write:
     ? nearAiVeto(new NearAiClient({ apiKey: key, timeoutMs: cfg.llm.timeoutMs }), cfg)
     : async () => { throw new Error("NEARAI_API_KEY not set"); };
   const executor = await PaperExecutor.open({ cfg, client: oneclick, store: new FileBalanceStore(P.balances) });
+  const anchor = await anchorFromEnv(o.env);
+  o.write(anchor ? `anchoring every decision in ${o.env["NEAR_GUARDRAIL_CONTRACT"]} on ${o.env["NEAR_NETWORK"] ?? "testnet"} before execution` : "no NEAR_AGENT_KEY / NEAR_GUARDRAIL_CONTRACT: decisions are recorded locally only (not anchored)");
   const symbols: Record<TradableAsset, string> = { BTC: cfg.assets.BTC.marketSymbol, NEAR: cfg.assets.NEAR.marketSymbol };
   const runner = await Runner.open({
     cfg, meta: { agentVersion: gitVersion(o.root), configHash: configHash(cfg) }, mode: "paper",
     feed: new MarketFeed(cfg, binance, new CandleArchive(P.candles)), executor, llm, authenticated: oneclick.authenticated,
     keys: new FileKeys(P.keys), heartbeat: new FileHeartbeat(P.heartbeat), recordsDir: P.records, statePath: P.state, write: o.write,
+    ...(anchor ? { anchor } : {}),
     prices: async () => {
       const t = await binance.lastPrices(Object.values(symbols));
       return Object.fromEntries((Object.keys(symbols) as TradableAsset[]).filter((a) => t[symbols[a]] !== undefined).map((a) => [a, t[symbols[a]]!]));
@@ -273,4 +276,17 @@ export async function runPaper(o: { root: string; env: NodeJS.ProcessEnv; write:
     proc.on("SIGINT", () => onSignal("SIGINT"));
     proc.on("SIGTERM", () => onSignal("SIGTERM"));
   });
+}
+
+/** The guardrail anchor from .env (restricted agent key from scripts/setup-agent-key.ts), or undefined. */
+export async function anchorFromEnv(env: NodeJS.ProcessEnv): Promise<Anchor | undefined> {
+  const key = env["NEAR_AGENT_KEY"];
+  const agentId = env["NEAR_AGENT_ACCOUNT"];
+  const contractId = env["NEAR_GUARDRAIL_CONTRACT"];
+  if (!key || !agentId || !contractId) return undefined;
+  const network = (env["NEAR_NETWORK"] ?? "testnet") as "testnet" | "mainnet";
+  const { Near } = await import("near-kit");
+  const { ContractAnchor } = await import("../execution/anchor.ts");
+  const near = new Near({ network, keyStore: { [agentId]: key }, defaultWaitUntil: "FINAL" });
+  return new ContractAnchor({ near: near as never, contractId, agentId });
 }
