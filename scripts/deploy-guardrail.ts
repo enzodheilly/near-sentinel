@@ -55,7 +55,9 @@ async function main(argv: string[]): Promise<number> {
   const agent = prefix ? `${prefix}-agent.near` : `agent.${owner}`;
   const guardrail = prefix ? `${prefix}-guardrail.near` : `guardrail.${owner}`;
 
-  for (const [id, amount] of [[agent, "1 NEAR"], [guardrail, "3 NEAR"]] as const) {
+  // guardrail: storage for the 160 KB wasm (~1.6 NEAR) + state; agent: gas for anchoring and key setup
+  const amounts = network === "mainnet" ? (["0.3 NEAR", "2 NEAR"] as const) : (["1 NEAR", "3 NEAR"] as const);
+  for (const [id, amount] of [[agent, amounts[0]], [guardrail, amounts[1]]] as const) {
     if (await near.accountExists(id)) {
       console.log(`${id}: exists, kept`);
       continue;
