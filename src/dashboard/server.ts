@@ -30,6 +30,7 @@ const font = (pkg: string, file: string) => join(dirname(require_.resolve(`${pkg
 export const STATIC: Readonly<Record<string, { readonly file: () => string; readonly type: string }>> = {
   "/vendor/three.module.js": { file: () => join(dirname(require_.resolve("three")), "three.module.js"), type: "text/javascript" },
   "/vendor/three.core.js": { file: () => join(dirname(require_.resolve("three")), "three.core.js"), type: "text/javascript" },
+  "/vendor/RoomEnvironment.js": { file: () => join(dirname(require_.resolve("three")), "..", "examples", "jsm", "environments", "RoomEnvironment.js"), type: "text/javascript" },
   "/assets/near-logo.png": { file: () => join(here, "assets", "near-logo.png"), type: "image/png" },
   "/fonts/chakra-500.woff2": { file: () => font("@fontsource/chakra-petch", "chakra-petch-latin-500-normal.woff2"), type: "font/woff2" },
   "/fonts/chakra-600.woff2": { file: () => font("@fontsource/chakra-petch", "chakra-petch-latin-600-normal.woff2"), type: "font/woff2" },
