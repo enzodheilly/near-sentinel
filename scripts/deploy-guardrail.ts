@@ -2,6 +2,11 @@
  * Deploys the guardrail on testnet (or mainnet) under the owner's account, run ONCE by the human.
  *
  *   node scripts/deploy-guardrail.ts --network testnet --owner <you>.testnet
+ *   node scripts/deploy-guardrail.ts --network mainnet --owner <owner> --prefix <name> --yes-mainnet
+ *
+ * On testnet the accounts are `agent.<owner>` and `guardrail.<owner>`. On mainnet the owner may be an implicit
+ * (64-hex) account, which cannot have sub-accounts (64-character limit), so `--prefix <name>` creates
+ * `<name>-agent.near` and `<name>-guardrail.near` through the `near` registrar.
  *
  * With the owner's full-access key from ~/.near-credentials (e.g. created by
  *   npx near-cli-rs account create-account sponsor-by-faucet-service <you>.testnet autogenerate-new-keypair
@@ -42,8 +47,13 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
   const near = new Near({ network, keyStore: keys, defaultWaitUntil: "FINAL" });
-  const agent = `agent.${owner}`;
-  const guardrail = `guardrail.${owner}`;
+  const prefix = arg("prefix");
+  if (network === "mainnet" && !prefix) {
+    console.error("mainnet needs --prefix <name>: the accounts will be <name>-agent.near and <name>-guardrail.near");
+    return 2;
+  }
+  const agent = prefix ? `${prefix}-agent.near` : `agent.${owner}`;
+  const guardrail = prefix ? `${prefix}-guardrail.near` : `guardrail.${owner}`;
 
   for (const [id, amount] of [[agent, "1 NEAR"], [guardrail, "3 NEAR"]] as const) {
     if (await near.accountExists(id)) {
@@ -51,7 +61,12 @@ async function main(argv: string[]): Promise<number> {
       continue;
     }
     const kp = generateKey();
-    await near.transaction(owner).createAccount(id).transfer(id, amount).addKey(kp.publicKey.toString(), { type: "fullAccess" }).send();
+    if (prefix) {
+      // top-level *.near account, created by the `near` registrar with the deposit as its starting balance
+      await near.call("near", "create_account", { new_account_id: id, new_public_key: kp.publicKey.toString() }, { signerId: owner, attachedDeposit: amount, gas: "100 Tgas" });
+    } else {
+      await near.transaction(owner).createAccount(id).transfer(id, amount).addKey(kp.publicKey.toString(), { type: "fullAccess" }).send();
+    }
     await keys.add(id, kp);
     console.log(`${id}: created with ${amount} (full-access key saved in ~/.near-credentials/${network}, not in the repo)`);
   }
@@ -76,11 +91,13 @@ async function main(argv: string[]): Promise<number> {
 
   const key = await addAgentKey(near, agent, guardrail);
   const env = new URL("../.env", import.meta.url).pathname;
-  await setEnv(env, "NEAR_NETWORK", network);
-  await setEnv(env, "NEAR_AGENT_ACCOUNT", agent);
-  await setEnv(env, "NEAR_GUARDRAIL_CONTRACT", guardrail);
-  await setEnv(env, "NEAR_AGENT_KEY", key.secretKey);
-  console.log(`${agent}: restricted key ${key.publicKey} (record_decision, pause on ${guardrail}) written to .env`);
+  // mainnet values go under LIVE_ so the paper run keeps anchoring on testnet
+  const p = network === "mainnet" ? "LIVE_" : "";
+  await setEnv(env, `${p}NEAR_NETWORK`, network);
+  await setEnv(env, `${p}NEAR_AGENT_ACCOUNT`, agent);
+  await setEnv(env, `${p}NEAR_GUARDRAIL_CONTRACT`, guardrail);
+  await setEnv(env, `${p}NEAR_AGENT_KEY`, key.secretKey);
+  console.log(`${agent}: restricted key ${key.publicKey} (record_decision, pause on ${guardrail}) written to .env as ${p}NEAR_*`);
   const explorer = network === "testnet" ? "https://testnet.nearblocks.io" : "https://nearblocks.io";
   console.log(`see it: ${explorer}/address/${guardrail}`);
   return 0;
