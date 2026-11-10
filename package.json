@@ -22,7 +22,8 @@
     "paper": "node src/cli.ts paper",
     "live": "node src/cli.ts live",
     "contract:build": "cd contracts/guardrail && cargo near build non-reproducible-wasm --no-abi",
-    "contract:test": "cargo test --manifest-path contracts/guardrail/Cargo.toml"
+    "contract:test": "cargo test --manifest-path contracts/guardrail/Cargo.toml",
+    "contract:deploy": "node scripts/deploy-guardrail.ts"
   },
   "dependencies": {
     "canonicalize": "^5.1.0",

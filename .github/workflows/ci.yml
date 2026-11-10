@@ -48,6 +48,10 @@ jobs:
         run: pnpm contract:test
       - name: Build the contract wasm
         run: pnpm contract:build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: guardrail-wasm
+          path: contracts/guardrail/target/near/near_sentinel_guardrail.wasm
       # near-kit downloads the sandbox binary to a temp dir then renames it under $HOME: keep both on one disk
       - name: Contract tests in a NEAR sandbox
         run: |
