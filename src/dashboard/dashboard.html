@@ -511,7 +511,9 @@ if (renderer) {
   at(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.11, 48, 1, true, -1.05, 2.1), visorMat), 0, -0.02, 0, head);
   at(sc(new THREE.Mesh(new THREE.SphereGeometry(0.362, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2.1), capMat)), 0, 0.045, 0, head);
   const brim = at(sc(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.028, 40, 1, false, -Math.PI / 2, Math.PI), capMat)), 0, 0.07, 0.15, head); brim.rotation.x = 0.1;
-  const capLogo = logoPlane(0.13); capLogo.rotation.x = -0.6; at(capLogo, 0, 0.26, 0.29, head);
+  // flat patch on a curved crown: sit it just outside the surface (crown radius + the curve's depth under its corners)
+  const capLogo = logoPlane(0.12); capLogo.rotation.x = -0.6;
+  at(capLogo, 0, 0.045 + 0.377 * Math.sin(0.6), 0.377 * Math.cos(0.6), head);
   // limbs
   const L = { r: 0.075 };
   const arms = [-1, 1].map((s) => ({ s, upper: limb(0.075, tee), hand: sc(new THREE.Mesh(new THREE.SphereGeometry(0.068, 20, 16), shell)) }));
