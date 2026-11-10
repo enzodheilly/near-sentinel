@@ -232,6 +232,7 @@ function hero() {
   const paused = S.guardrails.some((g) => g.policy && g.policy.paused) || S.modes.some((m) => m.portfolio && m.portfolio.killSwitch);
   window.__agent.mood = paused ? "alert" : run ? "work" : "sleep";
   window.__agent.chart = S.chart || [];
+  window.__agent.feed = S.decisions.slice(0, 7).map((d) => ({ t: hhmm(d.barTime), a: d.asset, o: d.action, r: d.action === "TRADE" ? "trade" : (why[d.reason] || d.reason || "").slice(0, 26) }));
   $("#lamp").className = "lamp " + (paused ? "wait" : run ? "on" : "off");
   $("#state").textContent = paused ? "Paused by the guardrail" : run ? `${run.mode === "live" ? "Live" : "Paper"} agent at work, heartbeat ${ago(run.heartbeat.at, S.at)}` : "Agent stopped";
   const m = run || paper;
@@ -380,13 +381,18 @@ refresh(); setInterval(refresh, 15000);
 let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(() => S && (chart(), cells()), 100); }).observe(document.body);
 </script>
 
+
 <script type="importmap">{ "imports": { "three": "/vendor/three.module.js" } }</script>
 <script type="module">
-// The agent at work: an original little robot in a NEAR cap and tee, typing on a laptop at its desk.
+// The agent at work: an original little robot in a NEAR cap and tee, on an office chair at a trading desk
+// with two screens, a keyboard, a notepad and a pencil. It types, and every so often takes the pencil and
+// writes a note. Amber visor when the guardrail pauses it, asleep when the agent is stopped.
 import * as THREE from "three";
 import { RoomEnvironment } from "/vendor/RoomEnvironment.js";
+
 const canvas = document.getElementById("scene");
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const Q = new URLSearchParams(location.search), T0 = Number(Q.get("t") || 0), RY = Q.has("ry") ? Number(Q.get("ry")) : null; // start offset in seconds (for screenshots)
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch { document.getElementById("fallback").style.display = "grid"; }
 if (renderer) {
@@ -398,109 +404,179 @@ if (renderer) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
-  // soft studio reflections so the shell and the aluminium read as real materials
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.55;
-
   scene.add(new THREE.HemisphereLight(0xdde9ef, 0x0b141a, 0.6));
   const key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(-2.0, 4.5, 4.5); key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024); key.shadow.camera.left = -3; key.shadow.camera.right = 3; key.shadow.camera.top = 3; key.shadow.camera.bottom = -3; key.shadow.radius = 4;
+  key.shadow.mapSize.set(1024, 1024); Object.assign(key.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3 }); key.shadow.radius = 4;
   scene.add(key);
   const rim = new THREE.DirectionalLight(0x00ec97, 0.9); rim.position.set(3, 2.5, -3); scene.add(rim);
 
+  // ---------------------------------------------------------------- materials and helpers
   const logo = new THREE.TextureLoader().load("/assets/near-logo.png");
   logo.colorSpace = THREE.SRGBColorSpace; logo.anisotropy = 4;
   const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.08, ...o });
   const shell = mat(0xe3ebe8, { roughness: 0.32, metalness: 0.2 });
   const tee = mat(0x0f171d, { roughness: 0.9 });
+  const pants = mat(0x1d2830, { roughness: 0.85 });
   const capMat = mat(0x0a1015, { roughness: 0.75 });
   const visorMat = new THREE.MeshStandardMaterial({ color: 0x041a12, emissive: 0x00ec97, emissiveIntensity: 1.5, roughness: 0.2 });
   const deskTop = mat(0x26333c, { roughness: 0.55, metalness: 0.15 });
   const metal = mat(0x2a3742, { roughness: 0.35, metalness: 0.7 });
-  const alu = mat(0x9aa7ae, { roughness: 0.3, metalness: 0.85 });
-  const shadowCast = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
+  const dark = mat(0x12191f, { roughness: 0.5, metalness: 0.3 });
+  const chairMat = mat(0x161f26, { roughness: 0.8 });
+  const sc = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
   const rounded = (w, h, r) => { const s = new THREE.Shape(); s.moveTo(-w / 2 + r, -h / 2); s.lineTo(w / 2 - r, -h / 2); s.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r); s.lineTo(w / 2, h / 2 - r); s.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2); s.lineTo(-w / 2 + r, h / 2); s.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r); s.lineTo(-w / 2, -h / 2 + r); s.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2); return s; };
-  const logoPlane = (size) => { const g = new THREE.ShapeGeometry(rounded(size, size, size * 0.16)); g.computeBoundingBox(); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / size + 0.5, uv.getY(i) / size + 0.5); return new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: logo, roughness: 0.5 })); };
+  const logoPlane = (size) => { const g = new THREE.ShapeGeometry(rounded(size, size, size * 0.16)); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / size + 0.5, uv.getY(i) / size + 0.5); return new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: logo, roughness: 0.5 })); };
+  const box = (w, h, d, m) => sc(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m));
+  const at = (o, x, y, z, parent) => { o.position.set(x, y, z); parent.add(o); return o; };
+  const UP = new THREE.Vector3(0, 1, 0);
+  // a capsule stretched between two world points (arms, legs)
+  const limb = (r, m) => { const o = sc(new THREE.Mesh(new THREE.CapsuleGeometry(r, 1, 6, 12), m)); scene.add(o); return o; };
+  const aim = (o, a, b, r) => { o.position.copy(a).add(b).multiplyScalar(0.5); o.scale.set(1, Math.max(0.05, a.distanceTo(b) - 2 * r), 1); o.quaternion.setFromUnitVectors(UP, b.clone().sub(a).normalize()); };
+  const canvasTex = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return { c, g: c.getContext("2d"), t }; };
 
   const world = new THREE.Group(); scene.add(world);
-  // floor shadow catcher
-  const pool = new THREE.Mesh(new THREE.CircleGeometry(2.2, 64), new THREE.MeshBasicMaterial({ color: 0x00ec97, transparent: true, opacity: 0.025 }));
-  pool.rotation.x = -Math.PI / 2; pool.position.y = -1.249; world.add(pool);
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(3.2, 64), new THREE.ShadowMaterial({ opacity: 0.35 }));
-  floor.rotation.x = -Math.PI / 2; floor.position.y = -1.25; floor.receiveShadow = true; world.add(floor);
-  // desk
-  const desk = new THREE.Group(); desk.position.y = -0.2; world.add(desk); // desk-local y = 0 is the middle of the top
-  desk.add(shadowCast(new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.07, 1.25), deskTop)));
-  for (const sx of [-1.25, 1.25]) for (const sz of [-0.55, 0.55]) { const leg = shadowCast(new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.0, 0.05), metal)); leg.position.set(sx, -0.53, sz); desk.add(leg); }
-  // laptop: keyboard toward the robot, lid back (with the logo) toward us
-  const laptop = new THREE.Group(); laptop.position.set(0.32, 0.05, 0.2); laptop.rotation.y = -0.32; desk.add(laptop);
-  laptop.add(shadowCast(new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.03, 0.62), alu)));
-  const keys = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.3), mat(0x151c22)); keys.rotation.x = -Math.PI / 2; keys.position.set(0, 0.016, -0.08); laptop.add(keys);
-  const lid = new THREE.Group(); lid.position.set(0, 0.015, 0.31); lid.rotation.x = 0.28; laptop.add(lid);
-  const lidShell = shadowCast(new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.6, 0.022), alu)); lidShell.position.y = 0.3; lid.add(lidShell);
-  const screenCanvas = document.createElement("canvas"); screenCanvas.width = 512; screenCanvas.height = 320;
-  const screenTex = new THREE.CanvasTexture(screenCanvas); screenTex.colorSpace = THREE.SRGBColorSpace;
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.52), new THREE.MeshBasicMaterial({ map: screenTex }));
-  screen.position.set(0, 0.3, -0.012); screen.rotation.y = Math.PI; lid.add(screen);
-  const lidLogo = logoPlane(0.17); lidLogo.position.set(0, 0.32, 0.012); lid.add(lidLogo);
-  const glowLight = new THREE.PointLight(0x00ec97, 1.2, 1.6); glowLight.position.set(0, 0.3, -0.25); lid.add(glowLight);
-  // a mug, because work
-  const mug = shadowCast(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.075, 0.17, 24), mat(0x00ec97, { roughness: 0.4 }))); mug.position.set(-0.8, 0.12, 0.25); desk.add(mug);
+  const pool = at(new THREE.Mesh(new THREE.CircleGeometry(2.2, 64), new THREE.MeshBasicMaterial({ color: 0x00ec97, transparent: true, opacity: 0.025 })), 0, -1.249, 0, world); pool.rotation.x = -Math.PI / 2;
+  const floor = at(new THREE.Mesh(new THREE.CircleGeometry(3.4, 64), new THREE.ShadowMaterial({ opacity: 0.35 })), 0, -1.25, 0, world); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
 
-  // the robot, seated behind the desk
-  const bot = new THREE.Group(); bot.position.set(0, 0, -0.42); world.add(bot);
-  const torso = shadowCast(new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 0.3, 8, 24), tee)); torso.position.y = 0.12; bot.add(torso);
-  const chest = logoPlane(0.24); chest.position.set(0, 0.3, 0.405); chest.rotation.x = -0.12; bot.add(chest);
-  const head = new THREE.Group(); head.position.y = 0.9; bot.add(head);
-  head.add(shadowCast(new THREE.Mesh(new THREE.SphereGeometry(0.38, 40, 32), shell)));
-  const visor = new THREE.Mesh(new THREE.CylinderGeometry(0.39, 0.39, 0.12, 48, 1, true, -1.05, 2.1), visorMat); visor.position.y = -0.02; head.add(visor);
-  const crown = shadowCast(new THREE.Mesh(new THREE.SphereGeometry(0.405, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2.1), capMat)); crown.position.y = 0.05; head.add(crown);
-  const brim = shadowCast(new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.03, 40, 1, false, -Math.PI / 2, Math.PI), capMat)); brim.position.set(0, 0.08, 0.17); brim.rotation.x = 0.1; head.add(brim);
-  const capLogo = logoPlane(0.15); capLogo.position.set(0, 0.29, 0.33); capLogo.rotation.x = -0.6; head.add(capLogo);
-  // arms: shoulder to hand, re-aimed every frame so the hands stay on the keyboard
-  const arm = (s) => {
-    const upper = shadowCast(new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 1, 6, 12), tee));
-    const hand = shadowCast(new THREE.Mesh(new THREE.SphereGeometry(0.075, 20, 16), shell));
-    world.add(upper); world.add(hand);
-    return { s, upper, hand };
-  };
-  const arms = [arm(-1), arm(1)];
-  const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-  const placeArm = (a, typing, t) => {
-    const shoulder = tmpA.set(0.43 * a.s, 0.38, 0).applyMatrix4(bot.matrixWorld);
-    const lift = typing ? Math.max(0, Math.sin(t * 14 + (a.s > 0 ? 0 : Math.PI))) * 0.035 : 0;
-    const handPos = typing ? tmpB.set(0.17 * a.s, 0.05 + lift, -0.12) : tmpB.set(0.3 * a.s, 0.04, -0.3);
-    laptop.localToWorld(handPos);
-    a.hand.position.copy(handPos);
-    const mid = shoulder.clone().add(handPos).multiplyScalar(0.5);
-    const len = shoulder.distanceTo(handPos);
-    a.upper.position.copy(mid);
-    a.upper.scale.set(1, Math.max(0.3, (len - 0.17) / 1), 1);
-    a.upper.quaternion.setFromUnitVectors(up, handPos.clone().sub(shoulder).normalize());
-  };
+  // ---------------------------------------------------------------- desk (local y 0 = middle of the top)
+  const desk = at(new THREE.Group(), 0, -0.2, 0, world);
+  desk.add(box(2.7, 0.07, 1.25, deskTop));
+  for (const sx of [-1.25, 1.25]) for (const sz of [-0.55, 0.55]) at(box(0.05, 1.0, 0.05, metal), sx, -0.53, sz, desk);
+  const TOP = 0.035;
 
-  const drawScreen = (t, mood) => {
-    const g = screenCanvas.getContext("2d");
-    const W = screenCanvas.width, H = screenCanvas.height;
-    g.fillStyle = "#05090d"; g.fillRect(0, 0, W, H);
-    g.fillStyle = "#00ec97"; g.font = "600 22px sans-serif"; g.fillText(mood === "sleep" ? "zzz" : "NEAR / USDC", 22, 38);
-    const c = (window.__agent && window.__agent.chart) || [];
-    if (c.length && mood !== "sleep") {
-      const lo = Math.min(...c.map((k) => k[3])), hi = Math.max(...c.map((k) => k[2]));
-      const n = Math.max(2, Math.floor(c.length * Math.min(1, ((t * 0.25) % 1.3))));
-      g.strokeStyle = "#00ec97"; g.lineWidth = 3; g.beginPath();
-      c.slice(0, n).forEach((k, i) => { const X = 22 + i * (W - 44) / (c.length - 1), Y = 70 + (hi - k[4]) / (hi - lo || 1) * (H - 100); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
-      g.stroke();
+  // two screens on arms, angled toward the trader; NEAR logo on their backs
+  const screens = [];
+  for (const s of [-1, 1]) {
+    const mon = at(new THREE.Group(), 0.74 * s, TOP, 0.3, desk);
+    mon.rotation.y = Math.PI - 0.72 * s; // screens face the robot (-z), turned inward
+    at(box(0.05, 0.24, 0.05, metal), 0, 0.12, 0, mon);
+    at(box(0.26, 0.015, 0.18, metal), 0, 0.008, 0, mon);
+    const panel = at(new THREE.Group(), 0, 0.45, 0.02, mon);
+    panel.add(box(0.78, 0.47, 0.035, dark));
+    const tex = canvasTex(512, 310);
+    at(new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.43), new THREE.MeshBasicMaterial({ map: tex.t, toneMapped: false })), 0, 0, 0.019, panel);
+    const back = logoPlane(0.14); back.rotation.y = Math.PI; at(back, 0, 0.02, -0.019, panel);
+    const light = at(new THREE.PointLight(0x00ec97, 0.6, 1.6), 0, 0, 0.3, panel);
+    screens.push({ tex, light });
+  }
+  // keyboard and mouse
+  const kb = at(box(0.62, 0.025, 0.2, dark), 0, TOP + 0.012, 0.02, desk);
+  at(new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.16), mat(0x2c3a44)), 0, 0.013, 0, kb).rotation.x = -Math.PI / 2;
+  at(sc(new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.05, 6, 12), dark)), 0.5, TOP + 0.03, 0.02, desk).rotation.x = Math.PI / 2;
+  // notepad and pencil on the robot's right (our left)
+  const padTex = canvasTex(256, 340);
+  const drawPadBase = () => {
+    const { g, c } = padTex;
+    g.fillStyle = "#f2efe6"; g.fillRect(0, 0, c.width, c.height);
+    g.strokeStyle = "rgba(60,120,170,0.25)"; g.lineWidth = 2;
+    for (let y = 44; y < c.height; y += 26) { g.beginPath(); g.moveTo(14, y); g.lineTo(c.width - 14, y); g.stroke(); }
+    g.fillStyle = "#00a874"; g.fillRect(0, 0, c.width, 18);
+    padTex.t.needsUpdate = true;
+  };
+  drawPadBase();
+  const pad = at(new THREE.Group(), -0.48, TOP + 0.004, -0.16, desk); pad.rotation.y = 0.3;
+  at(new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.44), new THREE.MeshStandardMaterial({ map: padTex.t, roughness: 0.9 })), 0, 0, 0, pad).rotation.x = -Math.PI / 2;
+  const pencil = sc(new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.17, 10), mat(0xffb547, { roughness: 0.6 })));
+  const tip = at(new THREE.Mesh(new THREE.ConeGeometry(0.009, 0.025, 10), mat(0x222222)), 0, -0.097, 0, pencil); tip.rotation.x = Math.PI;
+  scene.add(pencil);
+  const pencilRest = new THREE.Vector3(), pencilRestDir = new THREE.Vector3();
+  const mug = at(sc(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.07, 0.16, 24), mat(0x00ec97, { roughness: 0.4 }))), 0.95, TOP + 0.08, -0.05, desk);
+
+  // ---------------------------------------------------------------- chair
+  const chair = at(new THREE.Group(), 0, 0, -0.5, world);
+  at(box(0.72, 0.08, 0.6, chairMat), 0, -0.47, 0, chair);
+  for (const s of [-1, 1]) { at(box(0.06, 0.04, 0.4, chairMat), 0.42 * s, -0.12, 0.02, chair); at(box(0.04, 0.32, 0.04, metal), 0.42 * s, -0.29, -0.05, chair); }
+  const backrest = at(box(0.84, 0.95, 0.08, chairMat), 0, 0.12, -0.32, chair); backrest.rotation.x = -0.1;
+  at(box(0.06, 0.4, 0.05, metal), 0, -0.3, -0.28, chair);
+  at(sc(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.5, 12), metal)), 0, -0.76, 0, chair);
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2;
+    const spoke = at(box(0.34, 0.035, 0.05, metal), Math.cos(a) * 0.17, -1.04, Math.sin(a) * 0.17, chair); spoke.rotation.y = -a;
+    at(sc(new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 10), dark)), Math.cos(a) * 0.33, -1.2, Math.sin(a) * 0.33, chair);
+  }
+
+  // ---------------------------------------------------------------- the robot, seated
+  const bot = at(new THREE.Group(), 0, 0, -0.5, world);
+  const torso = at(sc(new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 0.3, 8, 24), tee)), 0, 0.02, 0, bot);
+  const chest = logoPlane(0.22); chest.rotation.x = -0.12; at(chest, 0, 0.17, 0.365, bot);
+  at(sc(new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.1, 6, 16), pants)), 0, -0.33, 0.02, bot).rotation.x = Math.PI / 2;
+  const head = at(new THREE.Group(), 0, 0.74, 0, bot);
+  head.add(sc(new THREE.Mesh(new THREE.SphereGeometry(0.34, 40, 32), shell)));
+  at(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.11, 48, 1, true, -1.05, 2.1), visorMat), 0, -0.02, 0, head);
+  at(sc(new THREE.Mesh(new THREE.SphereGeometry(0.362, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2.1), capMat)), 0, 0.045, 0, head);
+  const brim = at(sc(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.028, 40, 1, false, -Math.PI / 2, Math.PI), capMat)), 0, 0.07, 0.15, head); brim.rotation.x = 0.1;
+  const capLogo = logoPlane(0.13); capLogo.rotation.x = -0.6; at(capLogo, 0, 0.26, 0.29, head);
+  // limbs
+  const L = { r: 0.075 };
+  const arms = [-1, 1].map((s) => ({ s, upper: limb(0.075, tee), hand: sc(new THREE.Mesh(new THREE.SphereGeometry(0.068, 20, 16), shell)) }));
+  for (const a of arms) scene.add(a.hand);
+  const legs = [-1, 1].map((s) => ({ s, thigh: limb(0.1, pants), shin: limb(0.085, pants), foot: sc(new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.07, 0.22), shell)) }));
+  for (const l of legs) scene.add(l.foot);
+
+  // ---------------------------------------------------------------- screens content
+  const drawScreens = (t, mood) => {
+    const A = window.__agent || {};
+    { // left: the market
+      const { g, c } = screens[0].tex; const W = c.width, H = c.height;
+      g.fillStyle = "#04080b"; g.fillRect(0, 0, W, H);
+      g.fillStyle = mood === "sleep" ? "#24333c" : "#00ec97"; g.font = "600 24px sans-serif"; g.fillText("NEAR / USDC  1h", 20, 36);
+      const k = A.chart || [];
+      if (k.length && mood !== "sleep") {
+        const lo = Math.min(...k.map((x) => x[3])), hi = Math.max(...k.map((x) => x[2])), n = k.length;
+        const X = (i) => 22 + i * (W - 44) / n, Y = (v) => 60 + (hi - v) / (hi - lo || 1) * (H - 80);
+        const shown = Math.max(2, Math.floor(n * Math.min(1, (t * 0.12) % 1.25)));
+        for (let i = 0; i < shown; i++) {
+          const x = k[i], up = x[4] >= x[1];
+          g.strokeStyle = g.fillStyle = up ? "#00ec97" : "#ff7a6b";
+          g.beginPath(); g.moveTo(X(i) + 3, Y(x[2])); g.lineTo(X(i) + 3, Y(x[3])); g.lineWidth = 1.5; g.stroke();
+          const top = Y(Math.max(x[1], x[4])), h = Math.max(2, Math.abs(Y(x[1]) - Y(x[4])));
+          g.fillRect(X(i), top, 6, h);
+        }
+      }
+      screens[0].tex.t.needsUpdate = true;
     }
-    screenTex.needsUpdate = true;
+    { // right: the decision feed
+      const { g, c } = screens[1].tex; const W = c.width, H = c.height;
+      g.fillStyle = "#04080b"; g.fillRect(0, 0, W, H);
+      g.fillStyle = mood === "sleep" ? "#24333c" : "#e9f3ef"; g.font = "600 24px sans-serif"; g.fillText("Decisions", 20, 36);
+      const f = A.feed || [];
+      g.font = "500 19px sans-serif";
+      f.slice(0, 7).forEach((d, i) => {
+        const y = 74 + i * 33;
+        g.fillStyle = "#50636d"; g.fillText(d.t, 20, y);
+        g.fillStyle = d.o === "TRADE" ? "#00ec97" : d.o === "REJECT" ? "#ffb547" : "#8597a0";
+        g.fillText(`${d.a} ${d.o === "TRADE" ? "TRADE" : d.o === "REJECT" ? "REFUSE" : "HOLD"}`, 92, y);
+        g.fillStyle = "#50636d"; g.fillText(d.r, 250, y);
+      });
+      if (mood !== "sleep" && Math.floor(t * 2) % 2) { g.fillStyle = "#00ec97"; g.fillRect(20, 74 + Math.min(f.length, 7) * 33 - 16, 10, 20); }
+      screens[1].tex.t.needsUpdate = true;
+    }
+  };
+
+  // ---------------------------------------------------------------- the note-taking routine
+  const CYCLE = 16; // seconds: type, reach for the pencil, write, put it back
+  const v = (x, y, z, parent) => parent.localToWorld(new THREE.Vector3(x, y, z));
+  const lerpV = (a, b, k) => a.clone().lerp(b, k);
+  const ease = (k) => k * k * (3 - 2 * k);
+  let strokes = 0, lastPhase = "";
+  const scribble = (k) => {
+    // draws a few words on the current line, as many as the progress allows
+    const { g } = padTex; const line = strokes % 10, y = 40 + line * 26;
+    g.strokeStyle = "#1d2a33"; g.lineWidth = 4; g.lineCap = "round";
+    g.beginPath();
+    const x0 = 22 + Math.floor(k * 200) - 6, x1 = 22 + Math.floor(k * 200);
+    g.moveTo(x0, y - 4 - 5 * Math.abs(Math.sin(x0 * 0.31))); g.lineTo(x1, y - 4 - 5 * Math.abs(Math.sin(x1 * 0.31)));
+    g.stroke(); padTex.t.needsUpdate = true;
   };
 
   const resize = () => {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     renderer.setSize(w, h, false); camera.aspect = w / h;
     const narrow = w / h < 1.1;
-    camera.position.set(narrow ? 1.6 : 1.9, 2.0, narrow ? 8.6 : 7.0);
-    camera.lookAt(0, 0.2, 0);
+    camera.position.set(narrow ? 2.0 : 2.6, 2.1, narrow ? 8.8 : 7.0);
+    camera.lookAt(0, 0.0, 0);
     camera.updateProjectionMatrix();
   };
   resize(); new ResizeObserver(resize).observe(canvas);
@@ -509,23 +585,74 @@ if (renderer) {
   const clock = new THREE.Clock();
   let lastScreen = -1;
   const frame = () => {
-    const t = clock.getElapsedTime();
+    const t = clock.getElapsedTime() + T0;
     const mood = (window.__agent && window.__agent.mood) || "boot";
-    const c = colors[mood] ?? colors.work;
-    visorMat.emissive.setHex(c); glowLight.color.setHex(c); rim.color.setHex(c);
+    const col = colors[mood] ?? colors.work;
+    visorMat.emissive.setHex(col); rim.color.setHex(col);
+    for (const s of screens) s.light.color.setHex(col), (s.light.intensity = mood === "sleep" ? 0.05 : 0.6);
     visorMat.emissiveIntensity = mood === "sleep" ? 0.2 : 1.3 + 0.25 * Math.sin(t * 2.4);
-    glowLight.intensity = mood === "sleep" ? 0.1 : 1.2;
     const working = mood === "work" || mood === "boot";
-    // typing, a glance at us every few seconds, asleep on the desk when stopped
-    const glance = working && (t % 9) > 7.6;
-    head.rotation.x = mood === "sleep" ? 0.42 : glance ? -0.08 : 0.06 + 0.02 * Math.sin(t * 7);
-    head.rotation.y = glance ? 0.45 : mood === "alert" ? 0.35 : 0.04 * Math.sin(t * 0.8);
-    bot.position.y = mood === "sleep" ? 0.02 : 0.1 + 0.012 * Math.sin(t * 1.6);
-    torso.rotation.x = mood === "sleep" ? 0.12 : 0;
-    world.rotation.y = 0.12 + 0.03 * Math.sin(t * 0.25);
+    world.rotation.y = (RY ?? 0.5) + 0.03 * Math.sin(t * 0.25);
+    bot.position.y = mood === "sleep" ? -0.04 : 0.008 * Math.sin(t * 1.6);
     world.updateMatrixWorld(true);
-    for (const a of arms) placeArm(a, working, t);
-    if (Math.floor(t * 4) !== lastScreen) { lastScreen = Math.floor(t * 4); drawScreen(t, mood); }
+
+    // phase of the routine
+    const c = working ? t % CYCLE : 0;
+    const phase = !working ? "rest" : c < 9 ? "type" : c < 10 ? "reach" : c < 10.8 ? "carry" : c < 13.6 ? "write" : c < 14.6 ? "return" : "back";
+    if (phase === "write" && lastPhase !== "write") strokes++;
+    if (phase === "type" && lastPhase === "back" && strokes >= 10) { drawPadBase(); strokes = 0; }
+    lastPhase = phase;
+
+    // anchor points in world space
+    const keyL = v(-0.15, 0.05, 0.0, kb), keyR = v(0.15, 0.05, 0.0, kb);
+    pencilRest.copy(v(0.2, 0.012, 0.0, pad)); pencilRestDir.copy(v(0.2, 0.012, 0.12, pad)).sub(pencilRest).normalize();
+    const padSpot = v(0, 0.02, 0.02, pad);
+    const lift = (s) => (phase === "type" || phase === "back" ? Math.max(0, Math.sin(t * 14 + (s > 0 ? 0 : Math.PI))) * 0.03 : 0);
+
+    // right hand (s = -1, on our left) does the notes; left hand keeps typing
+    let rightHand, pencilInHand = false;
+    const k = (a, b) => ease(Math.min(1, Math.max(0, (c - a) / (b - a))));
+    if (!working) rightHand = v(-0.32, 0.04, -0.1, kb);
+    else if (phase === "type") rightHand = keyL.clone();
+    else if (phase === "reach") rightHand = lerpV(keyL, pencilRest.clone().add(new THREE.Vector3(0, 0.05, 0)), k(9, 10));
+    else if (phase === "carry") { rightHand = lerpV(pencilRest.clone().add(new THREE.Vector3(0, 0.05, 0)), padSpot.clone().add(new THREE.Vector3(0, 0.08, 0)), k(10, 10.8)); pencilInHand = true; }
+    else if (phase === "write") {
+      const w = (c - 10.8) / 2.8;
+      rightHand = padSpot.clone().add(new THREE.Vector3(-0.08 + 0.16 * ((w * 3) % 1), 0.075 + 0.01 * Math.sin(t * 30), 0.02 * Math.sin(t * 9)));
+      pencilInHand = true; scribble((w * 3) % 1);
+    } else if (phase === "return") { rightHand = lerpV(padSpot.clone().add(new THREE.Vector3(0, 0.08, 0)), pencilRest.clone().add(new THREE.Vector3(0, 0.05, 0)), k(13.6, 14.6)); pencilInHand = c < 14.4; }
+    else rightHand = lerpV(pencilRest.clone().add(new THREE.Vector3(0, 0.05, 0)), keyL, k(14.6, 16));
+    rightHand.y += lift(-1);
+    const leftHand = (working ? keyR.clone() : v(0.32, 0.04, -0.1, kb)); leftHand.y += lift(1);
+
+    for (const a of arms) {
+      const shoulder = v(0.4 * a.s, 0.24, 0.02, bot);
+      const hand = a.s < 0 ? rightHand : leftHand;
+      a.hand.position.copy(hand);
+      aim(a.upper, shoulder, hand, 0.075);
+    }
+    if (pencilInHand) {
+      pencil.position.copy(rightHand).add(new THREE.Vector3(0, -0.02, 0.02));
+      pencil.quaternion.setFromUnitVectors(UP, new THREE.Vector3(0.25, 1, -0.35).normalize());
+    } else {
+      pencil.position.copy(pencilRest);
+      pencil.quaternion.setFromUnitVectors(UP, pencilRestDir);
+    }
+
+    // legs: hips on the seat, knees under the desk, feet on the floor
+    for (const l of legs) {
+      const hip = v(0.15 * l.s, -0.36, 0.05, bot), knee = v(0.17 * l.s, -0.38, 0.5, bot), ankle = v(0.2 * l.s, -1.08, 0.36 + 0.02 * Math.sin(t * 0.7 + l.s), bot);
+      aim(l.thigh, hip, knee, 0.1); aim(l.shin, knee, ankle, 0.085);
+      l.foot.position.copy(ankle).add(new THREE.Vector3(0, -0.08, 0.05)); l.foot.rotation.y = world.rotation.y;
+    }
+
+    // head: reads the screens, follows the pencil, glances at us, sleeps when stopped
+    const glance = working && phase === "type" && c > 6.5 && c < 8;
+    head.rotation.x = mood === "sleep" ? 0.42 : phase === "write" || phase === "carry" ? 0.32 : glance ? -0.08 : 0.04 + 0.015 * Math.sin(t * 7);
+    head.rotation.y = mood === "sleep" ? 0 : phase === "write" || phase === "carry" ? -0.55 : glance ? 0.6 : mood === "alert" ? 0.4 : 0.22 * Math.sin(t * 0.35);
+    torso.rotation.x = mood === "sleep" ? 0.12 : 0;
+
+    if (Math.floor(t * 4) !== lastScreen) { lastScreen = Math.floor(t * 4); drawScreens(t, mood); }
     renderer.render(scene, camera);
     if (!reduced) requestAnimationFrame(frame);
   };
