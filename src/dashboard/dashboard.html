@@ -392,7 +392,8 @@ import { RoomEnvironment } from "/vendor/RoomEnvironment.js";
 
 const canvas = document.getElementById("scene");
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const Q = new URLSearchParams(location.search), T0 = Number(Q.get("t") || 0), RY = Q.has("ry") ? Number(Q.get("ry")) : null; // start offset in seconds (for screenshots)
+const Q = new URLSearchParams(location.search), T0 = Number(Q.get("t") || 0), RY = Q.has("ry") ? Number(Q.get("ry")) : null;
+// screenshot helpers: ?t= time offset, ?ry= view angle, ?step= fixed seconds per frame, ?seed=, ?act= first activity, ?note= first note kind
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch { document.getElementById("fallback").style.display = "grid"; }
 if (renderer) {
@@ -561,20 +562,65 @@ if (renderer) {
     }
   };
 
-  // ---------------------------------------------------------------- the note-taking routine
-  const CYCLE = 16; // seconds: type, reach for the pencil, write, put it back
+  // ---------------------------------------------------------------- behaviour: a small planner, never the same loop twice
+  // The agent picks its next activity at random (weighted): type, read the screens, jot a word / a sentence / a list,
+  // sip its coffee, glance at us, stretch. Activities only set targets; hands and head ease toward them, so every
+  // transition is smooth and no two minutes look alike.
   const v = (x, y, z, parent) => parent.localToWorld(new THREE.Vector3(x, y, z));
-  const lerpV = (a, b, k) => a.clone().lerp(b, k);
   const ease = (k) => k * k * (3 - 2 * k);
-  let strokes = 0, lastPhase = "";
-  const scribble = (k) => {
-    // draws a few words on the current line, as many as the progress allows
-    const { g } = padTex; const line = strokes % 10, y = 40 + line * 26;
-    g.strokeStyle = "#1d2a33"; g.lineWidth = 4; g.lineCap = "round";
-    g.beginPath();
-    const x0 = 22 + Math.floor(k * 200) - 6, x1 = 22 + Math.floor(k * 200);
-    g.moveTo(x0, y - 4 - 5 * Math.abs(Math.sin(x0 * 0.31))); g.lineTo(x1, y - 4 - 5 * Math.abs(Math.sin(x1 * 0.31)));
-    g.stroke(); padTex.t.needsUpdate = true;
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  let seed = Number(Q.get("seed")) || (Math.random() * 2 ** 31) | 0;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const range = (a, b) => a + (b - a) * rnd();
+  const pick = (w) => { let r = rnd() * Object.values(w).reduce((x, y) => x + y, 0); for (const [k, x] of Object.entries(w)) if ((r -= x) <= 0) return k; return Object.keys(w)[0]; };
+
+  // the notepad: a page that fills up line by line, then is turned
+  const PAD_W = 256, PAD_H = 340, LINE0 = 44, LINE_H = 26, MARGIN = 20, LINES = 11;
+  let padLine = 0;
+  const padToWorld = (u, w) => v((u / PAD_W - 0.5) * 0.34, 0.006, (w / PAD_H - 0.5) * 0.44, pad);
+  // a note is a timeline of pen strokes: {t0, t1, x0, x1, y, down}
+  const planNote = (kind) => {
+    const lines = kind === "word" ? [[range(26, 56)]] : kind === "sentence" ? [words(range(130, 210))] : Array.from({ length: 2 + Math.floor(rnd() * 3) }, (_, i) => [12, ...words(range(70, 170))]);
+    if (padLine + lines.length > LINES) { padLine = 0; drawPadBase(); }
+    const segs = []; let t = 0, x = MARGIN, y = LINE0 + padLine * LINE_H;
+    const speed = range(80, 120);
+    for (const [li, ws] of lines.entries()) {
+      if (li) { const nx = MARGIN; segs.push({ t0: t, t1: t + 0.3, x0: x, x1: nx, y0: y, y1: y + LINE_H, down: false }); t += 0.3; x = nx; y += LINE_H; }
+      for (const [wi, w] of ws.entries()) {
+        if (wi) { const gap = range(7, 13); segs.push({ t0: t, t1: t + 0.12, x0: x, x1: x + gap, y0: y, y1: y, down: false }); t += 0.12; x += gap; }
+        const d = w / speed; segs.push({ t0: t, t1: t + d, x0: x, x1: x + w, y0: y, y1: y, down: true, ph: rnd() * 6, amp: range(4, 8) }); t += d; x += w;
+        if (kind === "list" && wi === ws.length - 1 && rnd() < 0.3) { segs.push({ t0: t, t1: t + range(0.5, 1.1), x0: x, x1: x, y0: y, y1: y, down: false, think: true }); t = segs[segs.length - 1].t1; }
+      }
+    }
+    padLine += lines.length;
+    return { segs, dur: t };
+  };
+  function words(total) { const out = []; let left = total; while (left > 14) { const w = Math.min(left, range(18, 52)); out.push(w); left -= w + 10; } return out; }
+  const penAt = (note, u) => {
+    const sg = note.segs.find((x) => u < x.t1) ?? note.segs[note.segs.length - 1];
+    const k = clamp01((u - sg.t0) / (sg.t1 - sg.t0)), x = sg.x0 + (sg.x1 - sg.x0) * k;
+    const y = sg.y0 + (sg.y1 - sg.y0) * k - (sg.down ? sg.amp * Math.abs(Math.sin(x * 0.42 + sg.ph)) : 0);
+    return { x, y, down: sg.down && k > 0 && k < 1, think: !!sg.think };
+  };
+  let lastPen = null;
+  const ink = (p) => {
+    if (p.down && lastPen && lastPen.down) {
+      const { g } = padTex; g.strokeStyle = "#1d2a33"; g.lineWidth = 3.2; g.lineCap = "round";
+      g.beginPath(); g.moveTo(lastPen.x, lastPen.y); g.lineTo(p.x, p.y); g.stroke(); padTex.t.needsUpdate = true;
+    }
+    lastPen = p;
+  };
+
+  // activities: each returns targets for this instant
+  const NOTE_IN = 1.5, NOTE_OUT = 1.6; // reach + carry, return + back
+  let act = null, actStart = 0, lastKind = "", lastSub = "";
+  const nextActivity = (t, mood) => {
+    const calm = mood === "alert" ? { type: 6, read: 4, glance: 1 } : { type: 9, read: 3, note: 5, sip: 1.6, glance: 1.6, stretch: 0.7 };
+    let kind = act ? pick(calm) : (Q.get("act") || "type");
+    if (kind !== "type" && kind === lastKind) kind = "type";
+    lastKind = kind; actStart = t;
+    if (kind === "note") { const sub = (!lastSub && Q.get("note")) || pick({ word: 3, sentence: 4, list: 2 }); lastSub = sub; const note = planNote(sub); return { kind, sub, note, dur: NOTE_IN + note.dur + NOTE_OUT }; }
+    return { kind, dur: { type: range(3, 10), read: range(2, 4.5), sip: 4.2, glance: range(1.2, 2.2), stretch: 3.2 }[kind], look: rnd() < 0.5 ? -1 : 1, rate: range(9, 16) };
   };
 
   const resize = () => {
@@ -589,9 +635,10 @@ if (renderer) {
 
   const colors = { work: 0x00ec97, boot: 0x00ec97, alert: 0xffb547, sleep: 0x24333c };
   const clock = new THREE.Clock();
-  let lastScreen = -1;
+  const STEP = Number(Q.get("step") || 0); let stepN = 0;
+  let lastScreen = -1, lastT = null, handR = null, handL = null, headX = 0, headY = 0, leanX = 0, blinkAt = -1, nextBlink = 3;
   const frame = () => {
-    const t = clock.getElapsedTime() + T0;
+    const t = STEP ? T0 + (stepN++) * STEP : clock.getElapsedTime() + T0; // ?step=: fixed time per frame (screenshots)
     const mood = (window.__agent && window.__agent.mood) || "boot";
     const col = colors[mood] ?? colors.work;
     visorMat.emissive.setHex(col); rim.color.setHex(col);
@@ -602,61 +649,96 @@ if (renderer) {
     bot.position.y = mood === "sleep" ? -0.04 : 0.008 * Math.sin(t * 1.6);
     world.updateMatrixWorld(true);
 
-    // phase of the routine
-    const c = working ? t % CYCLE : 0;
-    const phase = !working ? "rest" : c < 9 ? "type" : c < 10 ? "reach" : c < 10.8 ? "carry" : c < 13.6 ? "write" : c < 14.6 ? "return" : "back";
-    if (phase === "write" && lastPhase !== "write") strokes++;
-    if (phase === "type" && lastPhase === "back" && strokes >= 10) { drawPadBase(); strokes = 0; }
-    lastPhase = phase;
+    const dt = Math.min(0.1, t - (lastT ?? t)); lastT = t;
+    if (working || mood === "alert") { if (!act || t - actStart >= act.dur) act = nextActivity(t, mood); } else act = null;
+    const u = act ? t - actStart : 0;
 
-    // anchor points in world space
-    const keyL = v(-0.15, 0.05, 0.0, kb), keyR = v(0.15, 0.05, 0.0, kb);
+    // anchors in world space
+    const keyAt = (x, z) => v(x, 0.045, z, kb);
     pencilRest.copy(v(0.2, 0.012, 0.0, pad)); pencilRestDir.copy(v(0.2, 0.012, 0.12, pad)).sub(pencilRest).normalize();
-    const padSpot = v(0, 0.02, 0.02, pad);
-    const lift = (s) => (phase === "type" || phase === "back" ? Math.max(0, Math.sin(t * 14 + (s > 0 ? 0 : Math.PI))) * 0.03 : 0);
+    const above = (p, h) => p.clone().add(new THREE.Vector3(0, h, 0));
+    const mugHome = v(0.72, TOP + 0.08, -0.12, desk);
+    const restR = v(-0.3, 0.03, -0.14, kb), restL = v(0.3, 0.03, -0.14, kb);
+    // typing: each hand hops between keys, bursts and pauses differ per activity
+    const typing = (s, rate) => {
+      const n = Math.floor(t * rate + (s > 0 ? 0.5 : 0)), h = Math.sin(n * 12.9898 + s * 78.233) * 43758.5453;
+      const r = h - Math.floor(h), pause = Math.sin(t * 0.9 + s) > 0.75;
+      const p = keyAt(s * (0.07 + 0.17 * r), -0.05 + 0.08 * (((r * 7) % 1) - 0.5));
+      if (!pause) p.y += Math.max(0, Math.sin((t * rate + (s > 0 ? 0.5 : 0)) * Math.PI)) * 0.025; else p.y += 0.02;
+      return p;
+    };
 
-    // right hand (s = -1, on our left) does the notes; left hand keeps typing
-    let rightHand, pencilInHand = false;
-    const k = (a, b) => ease(Math.min(1, Math.max(0, (c - a) / (b - a))));
-    if (!working) rightHand = v(-0.32, 0.04, -0.1, kb);
-    else if (phase === "type") rightHand = keyL.clone();
-    else if (phase === "reach") rightHand = lerpV(keyL, pencilRest.clone().add(new THREE.Vector3(0, 0.05, 0)), k(9, 10));
-    else if (phase === "carry") { rightHand = lerpV(pencilRest.clone().add(new THREE.Vector3(0, 0.05, 0)), padSpot.clone().add(new THREE.Vector3(0, 0.08, 0)), k(10, 10.8)); pencilInHand = true; }
-    else if (phase === "write") {
-      const w = (c - 10.8) / 2.8;
-      rightHand = padSpot.clone().add(new THREE.Vector3(-0.08 + 0.16 * ((w * 3) % 1), 0.075 + 0.01 * Math.sin(t * 30), 0.02 * Math.sin(t * 9)));
-      pencilInHand = true; scribble((w * 3) % 1);
-    } else if (phase === "return") { rightHand = lerpV(padSpot.clone().add(new THREE.Vector3(0, 0.08, 0)), pencilRest.clone().add(new THREE.Vector3(0, 0.05, 0)), k(13.6, 14.6)); pencilInHand = c < 14.4; }
-    else rightHand = lerpV(pencilRest.clone().add(new THREE.Vector3(0, 0.05, 0)), keyL, k(14.6, 16));
-    rightHand.y += lift(-1);
-    const leftHand = (working ? keyR.clone() : v(0.32, 0.04, -0.1, kb)); leftHand.y += lift(1);
+    let R, Lh, hx = 0.04, hy = 0, lean = 0, pencilHeld = false, penTip = null, mugHeld = false, kR = 10, kL = 10;
+    const kind = act?.kind ?? "rest";
+    if (kind === "rest") { R = restR; Lh = restL; hx = mood === "sleep" ? 0.42 : 0.1; }
+    else if (kind === "type") {
+      R = typing(-1, act.rate); Lh = typing(1, act.rate * 0.93); kR = kL = 18;
+      hy = 0.28 * act.look * Math.sin(u * 0.5) + 0.12 * Math.sin(u * 1.7); hx = 0.05;
+    } else if (kind === "read") {
+      R = restR; Lh = above(keyAt(0.2, 0.0), 0.01); lean = 0.08;
+      hy = 0.35 * Math.sin(u * 1.1) * act.look; hx = 0.02 + 0.03 * Math.sin(u * 2.3);
+    } else if (kind === "glance") {
+      R = typing(-1, 4); Lh = keyAt(0.18, 0); hy = 0.45; hx = -0.1 + 0.06 * Math.sin(u * 5) * (u > 0.6 ? 1 : 0);
+    } else if (kind === "stretch") {
+      const up = ease(clamp01(u / 0.9)) * (1 - ease(clamp01((u - 2.3) / 0.9)));
+      R = v(-0.22, 0.95 + 0.25 * up, 0.0, bot).lerp(restR, 1 - up); Lh = v(0.22, 0.95 + 0.25 * up, 0.0, bot).lerp(restL, 1 - up);
+      hx = -0.25 * up; lean = -0.12 * up; kR = kL = 5;
+    } else if (kind === "sip") {
+      R = typing(-1, 6);
+      const toMug = clamp01(u / 0.9), lift = ease(clamp01((u - 0.9) / 0.8)) * (1 - ease(clamp01((u - 2.6) / 0.7))), back = clamp01((u - 3.4) / 0.8);
+      const mouth = v(0.12, 0.66, 0.42, bot);
+      Lh = u < 0.9 ? above(mugHome, 0.06).lerp(keyAt(0.18, 0), 1 - ease(toMug)) : u < 3.4 ? above(mugHome, 0.06).lerp(mouth, lift) : above(mugHome, 0.06).lerp(keyAt(0.18, 0), ease(back));
+      mugHeld = u > 0.9 && u < 3.4; hx = -0.18 * lift; hy = 0.15 * lift; kL = 9;
+    } else if (kind === "note") {
+      Lh = typing(1, 5); kR = 9;
+      const w = u - NOTE_IN, n = act.note;
+      if (u < 0.8) R = above(pencilRest, 0.05);
+      else if (w < 0) { pencilHeld = true; R = above(padToWorld(MARGIN, LINE0), 0.08); }
+      else if (w < n.dur) {
+        const p = penAt(n, w); ink(p); pencilHeld = true; kR = 30;
+        penTip = padToWorld(p.x, p.y); if (!p.down) penTip.y += p.think ? 0.05 : 0.012;
+        R = penTip.clone().add(new THREE.Vector3(0.0, 0.07, -0.05));
+        if (p.think) { hx = 0.05; hy = 0.3; } // pauses, looks back at the screen, then carries on
+      } else if (w < n.dur + 0.8) { pencilHeld = w < n.dur + 0.65; R = above(pencilRest, 0.05); lastPen = null; }
+      else R = typing(-1, 8);
+      if (w >= 0 && w < n.dur && !(penAt(n, w).think)) { hx = 0.36; hy = -0.45; lean = 0.06; } else if (u < NOTE_IN) { hx = 0.25; hy = -0.4; }
+    }
+    if (mood === "alert") hy += 0.25;
+
+    // ease hands and head toward their targets
+    const f = (k) => 1 - Math.exp(-k * dt);
+    if (!handR) { handR = R.clone(); handL = Lh.clone(); }
+    handR.lerp(R, f(kR)); handL.lerp(Lh, f(kL));
+    headX += (hx - headX) * f(5); headY += (hy - headY) * f(4); leanX += (lean - leanX) * f(3);
 
     for (const a of arms) {
       const shoulder = v(0.4 * a.s, 0.24, 0.02, bot);
-      const hand = a.s < 0 ? rightHand : leftHand;
+      const hand = a.s < 0 ? handR : handL;
       a.hand.position.copy(hand);
       aim(a.upper, shoulder, hand, 0.075);
     }
-    if (pencilInHand) {
-      pencil.position.copy(rightHand).add(new THREE.Vector3(0, -0.02, 0.02));
-      pencil.quaternion.setFromUnitVectors(UP, new THREE.Vector3(0.25, 1, -0.35).normalize());
-    } else {
-      pencil.position.copy(pencilRest);
-      pencil.quaternion.setFromUnitVectors(UP, pencilRestDir);
-    }
+    if (pencilHeld) {
+      const tipNow = penTip && kind === "note" ? penTip : handR.clone().add(new THREE.Vector3(0, -0.07, 0.05));
+      const dir = handR.clone().sub(tipNow).normalize();
+      pencil.position.copy(tipNow).addScaledVector(dir, 0.1); pencil.quaternion.setFromUnitVectors(UP, dir);
+    } else { pencil.position.copy(pencilRest); pencil.quaternion.setFromUnitVectors(UP, pencilRestDir); }
+    if (mugHeld) { mug.position.copy(desk.worldToLocal(handL.clone().add(new THREE.Vector3(0, -0.05, 0)))); mug.rotation.x = -0.5 * headX; }
+    else { mug.position.copy(desk.worldToLocal(mugHome.clone())); mug.rotation.x = 0; }
 
-    // legs: hips on the seat, knees under the desk, feet on the floor
+    // legs: hips on the seat, knees under the desk, feet on the floor; a foot taps now and then
     for (const l of legs) {
-      const hip = v(0.15 * l.s, -0.36, 0.05, bot), knee = v(0.17 * l.s, -0.38, 0.5, bot), ankle = v(0.2 * l.s, -1.08, 0.36 + 0.02 * Math.sin(t * 0.7 + l.s), bot);
+      const tap = l.s > 0 && kind === "type" ? Math.max(0, Math.sin(t * 6)) * 0.025 : 0;
+      const hip = v(0.15 * l.s, -0.36, 0.05, bot), knee = v(0.17 * l.s, -0.38, 0.5, bot), ankle = v(0.2 * l.s, -1.08 + tap, 0.36 + 0.02 * Math.sin(t * 0.7 + l.s), bot);
       aim(l.thigh, hip, knee, 0.1); aim(l.shin, knee, ankle, 0.085);
       l.foot.position.copy(ankle).add(new THREE.Vector3(0, -0.08, 0.05)); l.foot.rotation.y = world.rotation.y;
     }
 
-    // head: reads the screens, follows the pencil, glances at us, sleeps when stopped
-    const glance = working && phase === "type" && c > 6.5 && c < 8;
-    head.rotation.x = mood === "sleep" ? 0.42 : phase === "write" || phase === "carry" ? 0.32 : glance ? -0.08 : 0.04 + 0.015 * Math.sin(t * 7);
-    head.rotation.y = mood === "sleep" ? 0 : phase === "write" || phase === "carry" ? -0.55 : glance ? 0.5 : mood === "alert" ? 0.4 : 0.22 * Math.sin(t * 0.35);
-    torso.rotation.x = mood === "sleep" ? 0.12 : 0;
+    // head and body; the visor blinks at irregular intervals
+    head.rotation.x = headX + 0.012 * Math.sin(t * 1.6); head.rotation.y = headY;
+    torso.rotation.x = (mood === "sleep" ? 0.12 : 0) + leanX;
+    torso.scale.set(1, 1 + 0.012 * Math.sin(t * 1.6), 1);
+    if (t > nextBlink) { blinkAt = t; nextBlink = t + range(2.5, 7); }
+    if (mood !== "sleep" && t - blinkAt < 0.14) visorMat.emissiveIntensity = 0.25;
 
     if (Math.floor(t * 4) !== lastScreen) { lastScreen = Math.floor(t * 4); drawScreens(t, mood); }
     renderer.render(scene, camera);
