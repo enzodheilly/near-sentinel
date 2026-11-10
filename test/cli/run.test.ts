@@ -118,8 +118,25 @@ describe("Runner", () => {
     const { opts, lines } = await setup();
     const runner = await Runner.open({ ...opts, feed: { snapshot: async () => { throw new Error("HTTP 503"); } } });
     await runner.tick();
-    expect(lines.join()).toMatch(/tick skipped: market data unavailable \(HTTP 503\)/);
+    expect(lines.join()).toMatch(/market data unavailable \(HTTP 503\); retrying every minute/);
     expect(runner.state.lastBarTime).toBeUndefined();
+  });
+
+  it("data down at the close: retried every minute, the bar is ticked as soon as data is back", async () => {
+    const { set, opts, lines } = await setup();
+    vi.useFakeTimers({ now: set.signalBarTime - H + 15_000, toFake: ["setTimeout", "clearTimeout", "Date"] });
+    let down = 3;
+    const real = opts.feed;
+    const runner = await Runner.open({ ...opts, feed: { snapshot: async (t) => { if (down-- > 0) throw new Error("no answer within 20000 ms"); return real.snapshot(t); } } });
+    runner.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runner.state.lastBarTime).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    await runner.tick();
+    expect(runner.state.lastBarTime).toBe(set.signalBarTime - 2 * H); // the same bar, 3 minutes late
+    expect(lines.filter((l) => /market data unavailable/.test(l))).toHaveLength(1); // said once, not every minute
+    expect(lines.join("\n")).toMatch(/market data back after 3 failed attempt/);
+    await runner.stop();
   });
 
   it("nextTickAt: the next close plus the delay", async () => {

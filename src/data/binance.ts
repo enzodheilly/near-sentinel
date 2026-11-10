@@ -46,17 +46,21 @@ export interface BinanceOptions {
   readonly baseUrl?: string;
   readonly fetch?: typeof fetch;
   readonly timeoutMs?: number;
+  /** Extra attempts on a timeout, network error or 5xx (default 1). */
+  readonly retries?: number;
 }
 
 export class BinanceClient {
   private readonly base: string;
   private readonly f: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly retries: number;
 
   constructor(o: BinanceOptions = {}) {
     this.base = (o.baseUrl ?? BINANCE_BASE).replace(/\/$/, "");
     this.f = o.fetch ?? fetch;
-    this.timeoutMs = o.timeoutMs ?? 10_000;
+    this.timeoutMs = o.timeoutMs ?? 20_000;
+    this.retries = o.retries ?? 1;
   }
 
   /** Last traded price of each symbol (GET /api/v3/ticker/price), for the price watcher. */
@@ -71,6 +75,17 @@ export class BinanceClient {
   }
 
   private async get(path: string): Promise<string> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.getOnce(path);
+      } catch (e) {
+        const transient = e instanceof BinanceError && (e.kind === "timeout" || e.kind === "network" || (e.kind === "http" && (e.status ?? 0) >= 500));
+        if (!transient || attempt >= this.retries) throw e;
+      }
+    }
+  }
+
+  private async getOnce(path: string): Promise<string> {
     let res: Response;
     try {
       res = await this.f(`${this.base}${path}`, { headers: { accept: "application/json", "user-agent": MARKET_USER_AGENT }, signal: AbortSignal.timeout(this.timeoutMs) });
