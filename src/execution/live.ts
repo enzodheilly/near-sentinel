@@ -3,7 +3,7 @@
  *
  *   quote (dry: false, INTENTS on both sides, the agent account as recipient and refund)
  *   → generate-intent (1Click prepares the NEP-413 transfer of the input to the quote's deposit address)
- *   → CHECK the payload before signing: signer, deadline, and exactly one transfer of exactly the quoted input
+ *   → CHECK the payload before signing: signer, deadline (≤ 96 h; 1Click uses 72 h), and exactly one transfer of exactly the quoted input
  *     token and amount to exactly the quoted deposit address. Anything else is refused, never signed.
  *   → sign (NEP-413, ed25519) → submit-intent → poll status until SUCCESS / REFUNDED / FAILED / timeout.
  *
@@ -18,6 +18,8 @@ import { TERMINAL } from "./oneclick.ts";
 import { toBase, toHuman } from "./units.ts";
 
 export const INTENTS_CONTRACT = "intents.near";
+/** Longest intent deadline we sign. */
+export const MAX_INTENT_DEADLINE_MS = 96 * 3_600_000;
 
 /** What the executor needs from a NEAR client (near-kit `Near`). */
 export interface NearSigner {
@@ -50,7 +52,9 @@ export function checkIntentPayload(g: GenerateIntentResponse, q: Quote, account:
   }
   if (m.signer_id !== account) problems.push(`signer_id is ${String(m.signer_id)}, not ${account}`);
   const deadline = typeof m.deadline === "string" ? Date.parse(m.deadline) : NaN;
-  if (!(deadline > now) || deadline - now > 10 * 60_000) problems.push(`deadline ${String(m.deadline)} is not within the next 10 minutes`);
+  // 1Click sets the intent deadline 72 h ahead (seen live on 10 Nov). The transfer is bound to this quote's deposit
+  // address, amount and nonce, so a late or replayed submission can only be refunded to us; still, cap it.
+  if (!(deadline > now) || deadline - now > MAX_INTENT_DEADLINE_MS) problems.push(`deadline ${String(m.deadline)} is not within the next ${MAX_INTENT_DEADLINE_MS / 3_600_000} h`);
   const intents = Array.isArray(m.intents) ? (m.intents as Record<string, unknown>[]) : [];
   if (intents.length !== 1) problems.push(`expected exactly one intent, got ${intents.length}`);
   const t = intents[0];
