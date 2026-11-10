@@ -72,3 +72,37 @@ describe.skipIf(!sandboxEnabled)("anchoring against the deployed contract (sandb
     expect(await a.record(h("refusal-while-paused"), "REJECT")).toBe(2);
   });
 });
+
+describe.skipIf(!sandboxEnabled)("restricted agent key (sandbox)", { timeout: 60_000 }, () => {
+  let g: Guardrail;
+  beforeAll(async () => {
+    g = await startGuardrail({ max_trades_per_day: 5 });
+  }, 180_000);
+  afterAll(async () => {
+    await g?.stop();
+  });
+
+  it("the key can only call record_decision and pause on the guardrail", async () => {
+    const { Near, generateKey } = await import("near-kit");
+    const { addAgentKey, AGENT_METHODS } = await import("../../scripts/setup-agent-key.ts");
+    const key = await addAgentKey(g.near, g.agent, g.contract);
+    expect(key.permission).toMatchObject({ type: "functionCall", receiverId: g.contract, methodNames: [...AGENT_METHODS] });
+
+    // the agent process holds only this key
+    const agent = new Near({ network: g.sandbox, keyStore: { [g.agent]: key.secretKey }, defaultWaitUntil: "FINAL" });
+    const call = (method: string, args: object = {}, contract = g.contract) => agent.call(contract, method, args, { signerId: g.agent, gas: "30 Tgas" });
+
+    await call("record_decision", { hash: h("with-restricted-key"), kind: "HOLD" });
+    expect(await g.view("get_decision", { hash: h("with-restricted-key") })).toMatchObject({ kind: "HOLD" });
+    await call("pause");
+    expect(await g.view("get_policy")).toMatchObject({ paused: true });
+
+    // everything else is refused by the key itself
+    await expect(call("unpause")).rejects.toThrow();
+    await expect(call("set_policy", { update: { max_trades_per_day: 99 } })).rejects.toThrow();
+    await expect(call("record_decision", { hash: h("elsewhere"), kind: "HOLD" }, g.stranger)).rejects.toThrow();
+    await expect(agent.transaction(g.agent).transfer(g.stranger, "1 NEAR").send()).rejects.toThrow();
+    await expect(agent.transaction(g.agent).addKey(generateKey().publicKey.toString(), { type: "fullAccess" }).send()).rejects.toThrow();
+    expect(await g.view("get_policy")).toMatchObject({ paused: true, max_trades_per_day: 5 });
+  });
+});
