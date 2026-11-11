@@ -129,8 +129,8 @@ const readJson = async <T>(p: string): Promise<T | undefined> => {
 async function mode(root: string, m: "paper" | "live", now: number, configured: boolean): Promise<ModeView> {
   const dir = join(root, "state", m);
   const hb = await readHeartbeat(join(dir, "heartbeat.json"));
-  const st = await readJson<{ savedAt: number; portfolio: PortfolioSnapshot; lastBarTime?: number }>(join(dir, "portfolio.json"));
-  const alert = hb || st ? heartbeatAlert(hb, now) : null;
+  const st = await readJson<{ savedAt: number; portfolio: PortfolioSnapshot; lastBarTime?: number; halted?: string }>(join(dir, "portfolio.json"));
+  const alert = st?.halted ? `Trading halted: ${st.halted}` : hb || st ? heartbeatAlert(hb, now) : null;
   return {
     mode: m, configured, running: !!hb && now - hb.at <= 5 * 60_000, alert,
     ...(hb ? { heartbeat: hb } : {}),

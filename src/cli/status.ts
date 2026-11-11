@@ -60,6 +60,8 @@ export async function runStatus(o: { statePath: string; records: string; write: 
   o.write(`NEAR Sentinel status — ${s.source}, as of ${iso(p.at)} UTC`);
   o.write(`  equity ${usd(p.equityUsd)} · cash ${p.balances.USDC.toFixed(2)} USDC · BTC ${p.balances.BTC} · NEAR ${p.balances.NEAR}`);
   o.write(`  today ${pct(day)} (stop new entries at −${L.dailyLossPct}%) · from peak ${usd(p.peakEquityUsd)} ${pct(dd)} (kill switch at −${L.maxDrawdownPct}%)`);
+  const halted = (s as { halted?: string }).halted;
+  if (halted) o.write(`  ALERT trading halted: ${halted} (check it, then restart with --resume)`);
   o.write(`  entries today ${p.entriesToday}/${L.maxEntriesPerDay} · kill switch ${p.killSwitch ? "ON — owner reset required" : "off"}`);
   const cds = Object.entries(p.cooldownUntil).filter(([, t]) => t !== undefined && t > p.at);
   o.write(`  cooldowns ${cds.length ? cds.map(([a, t]) => `${a} until ${iso(t!)}`).join(", ") : "none"}`);

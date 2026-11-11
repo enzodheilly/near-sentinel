@@ -3,6 +3,8 @@ import { defaultRiskConfig as cfg } from "../../src/config/default.ts";
 import { checkIntentPayload, LiveExecutor, type NearSigner } from "../../src/execution/live.ts";
 import type { GenerateIntentResponse, OneClickClient, QuoteRequest, QuoteResponse, StatusResponse } from "../../src/execution/oneclick.ts";
 import { OneClickClient as Client } from "../../src/execution/oneclick.ts";
+import { executeOnce } from "../../src/execution/executor.ts";
+import { MemoryKeys } from "../../src/execution/idempotency.ts";
 import type { EntryProposal, ExitProposal, Quote } from "../../src/types.ts";
 
 const A = cfg.assets;
@@ -86,16 +88,39 @@ describe("LiveExecutor", () => {
     expect(calls.some((c) => c.kind === "submit")).toBe(false);
   });
 
-  it("REFUNDED and no final status are reported, not filled", async () => {
+  it("REFUNDED is reported; no final status is UNKNOWN (maybe settled later), never filled", async () => {
     const refunded = fakes({ statuses: ["REFUNDED"] });
     expect((await refunded.x.execute(entry, await refunded.x.quote(entry, 50))).status).toBe("REFUNDED");
     const stuck = fakes({ statuses: Array(10_000).fill("PROCESSING") });
     let t = NOW;
     const x = new LiveExecutor({ ...(stuck.x as unknown as { o: object }).o, clock: () => (t += 10_000) } as never);
     const r = await x.execute(entry, await x.quote(entry, 50));
-    expect(r.status).toBe("FAILED");
+    expect(r.status).toBe("UNKNOWN");
     expect(r.error).toMatch(/no final status/);
     expect(r.fill).toBeUndefined();
+  });
+
+  it("a submit error is UNKNOWN (the signed intent may have arrived), and the idempotency key stays pending", async () => {
+    const f = fakes();
+    (f.x as unknown as { o: { client: { submitIntent: () => Promise<never> } } }).o.client.submitIntent = async () => { throw new Error("socket hang up"); };
+    const keys = new MemoryKeys();
+    const r = await executeOnce(f.x, keys, entry, await f.x.quote(entry, 50));
+    expect(r.status).toBe("UNKNOWN");
+    expect(keys.pending()).toHaveLength(1); // never re-sent for this key
+  });
+
+  it("refuses a quote whose input is not exactly the requested amount (the cap applies to what is signed)", async () => {
+    const f = fakes();
+    const c = (f.x as unknown as { o: { client: { quote: (r: QuoteRequest) => Promise<QuoteResponse> } } }).o.client;
+    const honest = c.quote;
+    c.quote = async (req) => { const r = await honest(req); return { ...r, quote: { ...r.quote, amountIn: (BigInt(req.amount) * 100n).toString() } }; };
+    await expect(f.x.quote(entry, 50)).rejects.toThrow(/not the requested/);
+  });
+
+  it("refuses to run without a valid cap", () => {
+    const f = fakes();
+    const o = (f.x as unknown as { o: object }).o;
+    for (const bad of [Number.NaN, 0, -5, Number.POSITIVE_INFINITY]) expect(() => new LiveExecutor({ ...o, maxNotionalUsd: bad } as never)).toThrow(/positive number/);
   });
 
   it("balances come from intents.near; a full exit sells exactly what is held", async () => {

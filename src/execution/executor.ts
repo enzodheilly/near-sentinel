@@ -25,6 +25,7 @@ export async function executeOnce(executor: Pick<Executor, "execute">, keys: Exe
   keys.begin(key);
   const report = await executor.execute(p, q); // a throw here leaves the key pending: outcome unknown
   if (report.status === "FAILED" || report.status === "REFUNDED") keys.release(key);
-  else keys.complete(key);
+  else if (report.status !== "UNKNOWN") keys.complete(key); // UNKNOWN stays pending: never re-sent for this key
+
   return report;
 }

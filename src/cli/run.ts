@@ -66,6 +66,8 @@ export interface RunnerOptions {
 
 interface RunnerState extends SavedState {
   readonly lastBarTime?: number;
+  /** Set when a swap's outcome is unknown: the agent trades no more until the owner checks it and resumes. */
+  readonly halted?: string;
 }
 
 export class Runner {
@@ -80,10 +82,12 @@ export class Runner {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private stopping = false;
   private failedAttempts = 0;
+  private halted: string | undefined;
   private readonly watcher: PriceWatcher;
 
-  private constructor(o: RunnerOptions, portfolio: PortfolioSnapshot, lastBarTime: number | undefined) {
+  private constructor(o: RunnerOptions, portfolio: PortfolioSnapshot, lastBarTime: number | undefined, halted?: string) {
     this.o = o;
+    this.halted = halted;
     this.clock = o.clock ?? Date.now;
     this.write = o.write ?? (() => {});
     this.portfolio = portfolio;
@@ -102,7 +106,7 @@ export class Runner {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw new Error(`${o.statePath}: unreadable state (${e instanceof Error ? e.message : String(e)}); refusing to start on a guess`);
     }
-    if (saved) return new Runner(o, saved.portfolio, saved.lastBarTime);
+    if (saved) return new Runner(o, saved.portfolio, saved.lastBarTime, saved.halted);
     const b = await o.executor.balances();
     const A = o.cfg.assets;
     const usdc = Number(b.USDC) / 10 ** A.USDC.decimals;
@@ -114,8 +118,14 @@ export class Runner {
     return new Runner(o, p, undefined);
   }
 
-  get state(): { readonly portfolio: PortfolioSnapshot; readonly lastBarTime: number | undefined } {
-    return { portfolio: this.portfolio, lastBarTime: this.lastBarTime };
+  get state(): { readonly portfolio: PortfolioSnapshot; readonly lastBarTime: number | undefined; readonly halted: string | undefined } {
+    return { portfolio: this.portfolio, lastBarTime: this.lastBarTime, halted: this.halted };
+  }
+
+  /** The owner checked the swap whose outcome was unknown (and fixed the state if needed): trading may go on. */
+  async resume(): Promise<void> {
+    this.halted = undefined;
+    await this.save();
   }
 
   /** When the next tick runs: the next candle close plus the delay. */
@@ -189,6 +199,7 @@ export class Runner {
 
   /** One tick; false when it must be retried (market data unavailable, or the tick stopped). */
   private async tickStep(): Promise<boolean> {
+    if (this.halted) return true;
     const now = this.clock();
     let snap: FeedSnapshot;
     try {
@@ -209,6 +220,7 @@ export class Runner {
     } catch (e) {
       // e.g. anchoring failed: the decision that failed was not executed; the next tick retries the bar
       await this.keepExecuted(e, now, snap.market);
+      if (e instanceof StepAborted && (await this.haltOnUnknown(e.executions))) return true;
       if (this.failedAttempts++ === 0) this.write(`ALERT tick stopped: ${e instanceof Error ? e.message : String(e)}; ${e instanceof StepAborted && e.executions.length ? `${e.executions.length} trade(s) before it were executed and kept; ` : ""}retrying every minute until the next close`);
       return false;
     }
@@ -216,6 +228,7 @@ export class Runner {
     this.lastBarTime = snap.barTime;
     await this.save();
     if (r.pauseContract) await this.pauseContract();
+    await this.haltOnUnknown(r.executions);
     const prices: Partial<Record<TradableAsset, number>> = {};
     for (const a of ["NEAR", "BTC"] as const) {
       const c = snap.market.candles1h[a].at(-1)?.close;
@@ -234,18 +247,20 @@ export class Runner {
   }
 
   private async watchStep(prices: Partial<Record<TradableAsset, number>>, at: number): Promise<void> {
-    if (!this.market || this.marketBar === undefined || this.portfolio.positions.length === 0) return;
+    if (this.halted || !this.market || this.marketBar === undefined || this.portfolio.positions.length === 0) return;
     const { deps, hashes } = this.deps(this.market);
     let r: Awaited<ReturnType<typeof runWatch>>;
     try {
       r = await runWatch({ barTime: this.marketBar, market: this.market, portfolio: this.portfolio, prices, at, executed: this.o.keys }, deps, this.o.cfg);
     } catch (e) {
       await this.keepExecuted(e, at, this.market);
+      if (e instanceof StepAborted) await this.haltOnUnknown(e.executions);
       throw e; // the watcher logs it and polls again
     }
     if (r.decisions.length === 0) return;
     this.portfolio = r.portfolio;
     await this.save();
+    await this.haltOnUnknown(r.executions);
     await this.history(at, prices, r.decisions);
     for (const [i, d] of r.decisions.entries()) {
       const o = d.outcome;
@@ -289,6 +304,21 @@ export class Runner {
     await this.historyLine(t, prices, trades);
   }
 
+  /**
+   * A swap whose outcome is unknown (sent, no final answer) leaves the portfolio uncertain: trading on would risk
+   * an unguarded position or selling twice. Everything stops (ticks and watcher) until the owner checks the intent
+   * and restarts with --resume. Saved, so a plain restart does not resume either.
+   */
+  private async haltOnUnknown(executions: readonly { proposal: TradeProposal; report: { status: string; intentHash?: string; error?: string } }[]): Promise<boolean> {
+    const u = executions.find((x) => x.report.status === "UNKNOWN");
+    if (!u) return false;
+    const p = u.proposal;
+    this.halted = `${p.kind} ${p.asset}${p.kind === "EXIT" ? ` ${p.reason}` : ""}: outcome unknown (${u.report.error ?? "no final status"})${u.report.intentHash ? `, intent ${u.report.intentHash}` : ""}`;
+    await this.save();
+    this.write(`ALERT trading halted: ${this.halted}. Check the intent on the explorer, fix state/ if needed, then restart with --resume.`);
+    return true;
+  }
+
   /** Kill switch: pause the guardrail contract (agent key may call `pause`; only the owner can unpause). */
   private async pauseContract(): Promise<void> {
     const a = this.o.anchor;
@@ -305,7 +335,7 @@ export class Runner {
   }
 
   private async save() {
-    const s: RunnerState = { savedAt: this.clock(), source: this.o.mode, portfolio: this.portfolio, ...(this.lastBarTime !== undefined ? { lastBarTime: this.lastBarTime } : {}) };
+    const s: RunnerState = { savedAt: this.clock(), source: this.o.mode, portfolio: this.portfolio, ...(this.lastBarTime !== undefined ? { lastBarTime: this.lastBarTime } : {}), ...(this.halted ? { halted: this.halted } : {}) };
     await saveState(this.o.statePath, s);
   }
 }
@@ -415,6 +445,10 @@ export async function runLive(o: { root: string; env: NodeJS.ProcessEnv; args: r
     return 2;
   }
   const cap = Number(e["LIVE_MAX_NOTIONAL_USD"] ?? 10);
+  if (!Number.isFinite(cap) || cap <= 0) {
+    o.write(`LIVE_MAX_NOTIONAL_USD must be a plain positive number of dollars (e.g. 10), got "${e["LIVE_MAX_NOTIONAL_USD"]}"; refusing to start without a cap`);
+    return 2;
+  }
   const P = livePaths(o.root);
   const lock = await acquireLock(join(dirname(P.state), "agent.lock"));
   if ("heldBy" in lock) {
@@ -441,6 +475,14 @@ export async function runLive(o: { root: string; env: NodeJS.ProcessEnv; args: r
       return Object.fromEntries((Object.keys(symbols) as TradableAsset[]).filter((a) => t[symbols[a]] !== undefined).map((a) => [a, t[symbols[a]]!]));
     },
   });
+  if (runner.state.halted) {
+    if (!o.args.includes("--resume")) {
+      o.write(`trading is halted: ${runner.state.halted}. Check it first, then re-run with --resume.`);
+      return 2;
+    }
+    await runner.resume();
+    o.write("resumed by the owner after a halt");
+  }
   o.write(`NEAR Sentinel LIVE · ${account} · cap $${cap}/trade · anchoring in ${e["LIVE_NEAR_GUARDRAIL_CONTRACT"]} (${e["LIVE_NEAR_NETWORK"] ?? "mainnet"}) · equity $${runner.state.portfolio.equityUsd.toFixed(2)} · Ctrl+C stops cleanly`);
   runner.start();
   const proc = o.signals ?? process;
