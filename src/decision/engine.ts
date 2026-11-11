@@ -307,10 +307,39 @@ export function exitPlan(p: PortfolioSnapshot, asset: TradableAsset, barTime: nu
   return { exits: step.exits, after: step.position };
 }
 
+/**
+ * Thrown when a step stops half-way (anchoring refused or down, a quote API failing…). Trades executed before the
+ * failure are real, so `portfolio` holds them: the caller keeps it instead of the portfolio it started from.
+ */
+export class StepAborted extends Error {
+  readonly portfolio: PortfolioSnapshot;
+  readonly executions: readonly { proposal: TradeProposal; report: ExecutionReport }[];
+  constructor(cause: unknown, portfolio: PortfolioSnapshot, executions: readonly { proposal: TradeProposal; report: ExecutionReport }[]) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.portfolio = portfolio;
+    this.executions = executions;
+  }
+}
+
+/** Runs a step; on failure, reports the portfolio as it stood after the last executed trade. */
+async function guarded(executions: { proposal: TradeProposal; report: ExecutionReport }[], current: () => PortfolioSnapshot, fn: () => Promise<TickResult>): Promise<TickResult> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof StepAborted) throw e;
+    throw new StepAborted(e, current(), [...executions]);
+  }
+}
+
 export async function runTick(input: TickInput, deps: EngineDeps, cfg: RiskConfig): Promise<TickResult> {
+  const executions: { proposal: TradeProposal; report: ExecutionReport }[] = [];
+  let p = input.portfolio;
+  return guarded(executions, () => p, () => tickBody(input, deps, cfg, executions, (x) => (p = x)));
+}
+
+async function tickBody(input: TickInput, deps: EngineDeps, cfg: RiskConfig, executions: { proposal: TradeProposal; report: ExecutionReport }[], track: (p: PortfolioSnapshot) => PortfolioSnapshot): Promise<TickResult> {
   const { barTime, market, executed } = input;
   const decisions: Decision[] = [];
-  const executions: { proposal: TradeProposal; report: ExecutionReport }[] = [];
   const alerts: string[] = [];
   const now = deps.clock();
   const depsT = { ...deps, llmTimeoutMs: deps.llmTimeoutMs ?? cfg.llm.timeoutMs };
@@ -319,7 +348,7 @@ export async function runTick(input: TickInput, deps: EngineDeps, cfg: RiskConfi
   const { freshness, prices } = marketFacts(market, barTime, input.portfolio);
   let p = rollPortfolio(input.portfolio, now, equityUsd(input.portfolio.balances, prices));
   const ks = applyKillSwitch(p, barTime, prices, cfg.limits);
-  p = ks.portfolio;
+  p = track(ks.portfolio);
   if (ks.tripped) alerts.push(`Kill switch: equity ${p.equityUsd.toFixed(2)} ≤ ${100 - cfg.limits.maxDrawdownPct}% of peak ${p.peakEquityUsd.toFixed(2)}; closing all positions, pausing the contract`);
 
   const decide = async (d: Decision) => {
@@ -343,11 +372,11 @@ export async function runTick(input: TickInput, deps: EngineDeps, cfg: RiskConfi
       continue;
     }
     if (plan.exits.length === 0) {
-      p = replacePosition(p, asset, plan.after);
+      p = track(replacePosition(p, asset, plan.after));
       continue;
     }
-    const r = await executeExits({ p, before, asset, barTime, now, plan, executed, deps: depsT, decide, fill, alerts }, cfg);
-    p = r.portfolio;
+    const r = await executeExits({ p, before, asset, barTime, now, plan, executed, deps: depsT, decide, fill, alerts, track }, cfg);
+    p = track(r.portfolio);
     exitStuck ||= r.stuck;
   }
 
@@ -371,7 +400,7 @@ export async function runTick(input: TickInput, deps: EngineDeps, cfg: RiskConfi
     if (ev.outcome.action !== "TRADE" || !quote) continue;
     const proposal = ev.outcome.proposal as EntryProposal;
     const report = await fill(proposal, quote);
-    if (report.fill) p = recordEntry(applyEntryFill(p, proposal, report, cfg));
+    if (report.fill) p = track(recordEntry(applyEntryFill(p, proposal, report, cfg)));
     else alerts.push(`${asset} entry did not fill (${report.status}${report.error ? `: ${report.error}` : ""})`);
   }
 
@@ -393,6 +422,8 @@ interface ExitRun {
   readonly fill: (proposal: TradeProposal, q: Quote) => Promise<ExecutionReport>;
   readonly alerts: string[];
   readonly trigger?: WatchTrigger;
+  /** Reports the portfolio after each fill, so an abort later in the step keeps it. */
+  readonly track: (p: PortfolioSnapshot) => PortfolioSnapshot;
 }
 
 /** Quotes, checks, records and executes one asset's exits in order; shared by the tick and the watcher. */
@@ -415,13 +446,13 @@ async function executeExits(x: ExitRun, cfg: RiskConfig): Promise<{ portfolio: P
       alerts.push(`${asset} ${exit.reason} exit did not fill (${report.status}${report.error ? `: ${report.error}` : ""})`);
       return { portfolio: p, stuck: true };
     }
-    p = applyExitFill(p, exit, report, cfg);
+    p = x.track(applyExitFill(p, exit, report, cfg));
     // last exit → the state computed by the exit machine; TP1 alone (TP2 refused) → the rest,
     // with TP1 marked and the stop at least at breakeven
     const c = current as Position;
     current = exit === plan.exits.at(-1) ? plan.after : { ...c, quantity: c.quantity - exit.quantity, tp1Hit: true, stopPrice: Math.max(c.stopPrice, c.entryPrice) };
-    p = replacePosition(p, asset, current);
-    if (exit.reason === "STOP") p = startCooldown(p, asset, exit.barTime, cfg.limits);
+    p = x.track(replacePosition(p, asset, current));
+    if (exit.reason === "STOP") p = x.track(startCooldown(p, asset, exit.barTime, cfg.limits));
   }
   return { portfolio: p, stuck: false };
 }
@@ -442,8 +473,13 @@ export interface WatchInput {
  * now, through the same quote, checks, record and execution path as a tick. No entry is ever taken here.
  */
 export async function runWatch(input: WatchInput, deps: EngineDeps, cfg: RiskConfig): Promise<TickResult> {
-  const decisions: Decision[] = [];
   const executions: { proposal: TradeProposal; report: ExecutionReport }[] = [];
+  let p = input.portfolio;
+  return guarded(executions, () => p, () => watchBody(input, deps, cfg, executions, (x) => (p = x)));
+}
+
+async function watchBody(input: WatchInput, deps: EngineDeps, cfg: RiskConfig, executions: { proposal: TradeProposal; report: ExecutionReport }[], track: (p: PortfolioSnapshot) => PortfolioSnapshot): Promise<TickResult> {
+  const decisions: Decision[] = [];
   const alerts: string[] = [];
   const now = deps.clock();
   const depsT = { ...deps, llmTimeoutMs: deps.llmTimeoutMs ?? cfg.llm.timeoutMs };
@@ -464,8 +500,8 @@ export async function runWatch(input: WatchInput, deps: EngineDeps, cfg: RiskCon
     const step = watchExit(pos, price, input.at, cfg.exits);
     if (!step) continue;
     const trigger: WatchTrigger = { kind: "watcher", price, at: input.at };
-    const r = await executeExits({ p, before: p, asset, barTime: input.barTime, now, plan: { exits: step.exits, after: step.position }, executed: input.executed, deps: depsT, decide, fill, alerts, trigger }, cfg);
-    p = r.portfolio;
+    const r = await executeExits({ p, before: p, asset, barTime: input.barTime, now, plan: { exits: step.exits, after: step.position }, executed: input.executed, deps: depsT, decide, fill, alerts, trigger, track }, cfg);
+    p = track(r.portfolio);
   }
   return { portfolio: p, decisions, executions, alerts, pauseContract: false };
 }
