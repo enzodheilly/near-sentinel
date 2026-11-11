@@ -3,7 +3,8 @@
  *
  * In live mode every decision record's hash is written to the guardrail contract BEFORE its trade executes.
  * If anchoring fails, the error propagates out of the engine's `onDecision`, so the trade is never executed
- * (the record stays on disk, unanchored, and the next tick starts over). A TRADE refused by the contract
+ * (the record stays on disk, unanchored, and the next tick starts over; trades executed earlier in the same
+ * step are kept by the runner, see `StepAborted`). A TRADE refused by the contract
  * (paused, daily cap) is refused for the agent too: the contract is the last word.
  *
  * `verify` uses `lookup` to check that a record's hash is on chain with the same kind.
@@ -21,6 +22,8 @@ export interface AnchorEntry {
 export interface Anchor {
   record(hash: string, kind: AnchorKind): Promise<number>;
   lookup(hash: string): Promise<AnchorEntry | null>;
+  /** Pauses the contract (kill switch). The agent key may pause; only the owner can unpause. */
+  pause?(): Promise<void>;
 }
 
 export class AnchorError extends Error {
@@ -61,6 +64,9 @@ export class ContractAnchor implements Anchor {
       throw new AnchorError(hash, e instanceof Error ? e.message : String(e));
     }
   }
+  async pause(): Promise<void> {
+    await this.near.call<unknown>(this.contractId, "pause", {}, { signerId: this.agentId, gas: "30 Tgas" });
+  }
   async lookup(hash: string): Promise<AnchorEntry | null> {
     return (await this.near.view<AnchorEntry | null>(this.contractId, "get_decision", { hash })) ?? null;
   }
@@ -71,6 +77,7 @@ export class MemoryAnchor implements Anchor {
   readonly entries = new Map<string, AnchorEntry>();
   private readonly clock: () => number;
   failWith: string | undefined;
+  paused = false;
   constructor(clock: () => number = Date.now) {
     this.clock = clock;
   }
@@ -80,6 +87,9 @@ export class MemoryAnchor implements Anchor {
     const seq = this.entries.size + 1;
     this.entries.set(hash, { hash, kind, recorded_at_ms: this.clock(), seq });
     return seq;
+  }
+  async pause(): Promise<void> {
+    this.paused = true;
   }
   async lookup(hash: string): Promise<AnchorEntry | null> {
     return this.entries.get(hash) ?? null;

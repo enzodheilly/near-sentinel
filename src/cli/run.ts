@@ -17,13 +17,13 @@
 
 import { dirname, join } from "node:path";
 import type { RiskConfig } from "../config/schema.ts";
-import { runTick, runWatch, type Decision, type EngineDeps, type TickMarket } from "../decision/engine.ts";
+import { runTick, runWatch, StepAborted, type Decision, type EngineDeps, type TickMarket } from "../decision/engine.ts";
 import { recorder, type RecordMeta } from "../decision/record.ts";
 import type { ExecutedKeys } from "../execution/idempotency.ts";
 import type { HeartbeatSink } from "../execution/watcher.ts";
 import { anchorHook, type Anchor } from "../execution/anchor.ts";
 import { PriceWatcher } from "../execution/watcher.ts";
-import { INTERVAL_MS, type Executor, type PortfolioSnapshot, type TradableAsset } from "../types.ts";
+import { INTERVAL_MS, type Executor, type PortfolioSnapshot, type TradableAsset, type TradeProposal } from "../types.ts";
 import { appendFile, readFile } from "node:fs/promises";
 import { configHash } from "../config/schema.ts";
 import { defaultRiskConfig } from "../config/default.ts";
@@ -207,13 +207,15 @@ export class Runner {
     try {
       r = await runTick({ barTime: snap.barTime, market: snap.market, portfolio: this.portfolio, executed: this.o.keys }, deps, this.o.cfg);
     } catch (e) {
-      // e.g. anchoring failed: the decision was not executed; the portfolio is unchanged, the next tick retries
-      if (this.failedAttempts++ === 0) this.write(`ALERT tick aborted before execution: ${e instanceof Error ? e.message : String(e)}; retrying every minute until the next close`);
+      // e.g. anchoring failed: the decision that failed was not executed; the next tick retries the bar
+      await this.keepExecuted(e, now, snap.market);
+      if (this.failedAttempts++ === 0) this.write(`ALERT tick stopped: ${e instanceof Error ? e.message : String(e)}; ${e instanceof StepAborted && e.executions.length ? `${e.executions.length} trade(s) before it were executed and kept; ` : ""}retrying every minute until the next close`);
       return false;
     }
     this.portfolio = r.portfolio;
     this.lastBarTime = snap.barTime;
     await this.save();
+    if (r.pauseContract) await this.pauseContract();
     const prices: Partial<Record<TradableAsset, number>> = {};
     for (const a of ["NEAR", "BTC"] as const) {
       const c = snap.market.candles1h[a].at(-1)?.close;
@@ -234,7 +236,13 @@ export class Runner {
   private async watchStep(prices: Partial<Record<TradableAsset, number>>, at: number): Promise<void> {
     if (!this.market || this.marketBar === undefined || this.portfolio.positions.length === 0) return;
     const { deps, hashes } = this.deps(this.market);
-    const r = await runWatch({ barTime: this.marketBar, market: this.market, portfolio: this.portfolio, prices, at, executed: this.o.keys }, deps, this.o.cfg);
+    let r: Awaited<ReturnType<typeof runWatch>>;
+    try {
+      r = await runWatch({ barTime: this.marketBar, market: this.market, portfolio: this.portfolio, prices, at, executed: this.o.keys }, deps, this.o.cfg);
+    } catch (e) {
+      await this.keepExecuted(e, at, this.market);
+      throw e; // the watcher logs it and polls again
+    }
     if (r.decisions.length === 0) return;
     this.portfolio = r.portfolio;
     await this.save();
@@ -251,17 +259,48 @@ export class Runner {
    * they were valued at, and the trades of that step. Read by the dashboard's portfolio tab; never by decisions.
    */
   private async history(t: number, prices: Partial<Record<TradableAsset, number>>, decisions: readonly Decision[]): Promise<void> {
-    const trades = decisions.flatMap((d) => {
-      const o = d.outcome;
-      if (o.action !== "TRADE") return [];
-      const p = o.proposal;
-      return [p.kind === "ENTRY" ? { asset: p.asset, kind: "ENTRY", notionalUsd: p.notionalUsd, price: p.referencePrice } : { asset: p.asset, kind: "EXIT", reason: p.reason, fraction: p.fraction, price: p.referencePrice }];
-    });
+    await this.historyLine(t, prices, decisions.flatMap((d) => (d.outcome.action === "TRADE" ? [d.outcome.proposal] : [])));
+  }
+
+  private async historyLine(t: number, prices: Partial<Record<TradableAsset, number>>, proposals: readonly TradeProposal[]): Promise<void> {
+    const trades = proposals.map((p) => (p.kind === "ENTRY" ? { asset: p.asset, kind: "ENTRY", notionalUsd: p.notionalUsd, price: p.referencePrice } : { asset: p.asset, kind: "EXIT", reason: p.reason, fraction: p.fraction, price: p.referencePrice }));
     const line = { t, bar: this.lastBarTime, equity: this.portfolio.equityUsd, balances: this.portfolio.balances, prices, ...(trades.length ? { trades } : {}) };
     try {
       await appendFile(join(dirname(this.o.statePath), "history.jsonl"), `${JSON.stringify(line)}\n`);
     } catch (e) {
       this.write(`history not written (${e instanceof Error ? e.message : String(e)}); trading is unaffected`);
+    }
+  }
+
+  /**
+   * A step stopped half-way: the trades it executed before stopping are real (their records were anchored and the
+   * swap done), so the portfolio keeps them. Without this the agent would forget a position it holds, or one it sold.
+   */
+  private async keepExecuted(e: unknown, t: number, market: TickMarket): Promise<void> {
+    if (!(e instanceof StepAborted) || e.executions.length === 0) return;
+    this.portfolio = e.portfolio;
+    await this.save();
+    const prices: Partial<Record<TradableAsset, number>> = {};
+    for (const a of ["NEAR", "BTC"] as const) {
+      const c = market.candles1h[a].at(-1)?.close;
+      if (c !== undefined) prices[a] = c;
+    }
+    const trades = e.executions.filter((x) => x.report.fill).map((x) => x.proposal);
+    await this.historyLine(t, prices, trades);
+  }
+
+  /** Kill switch: pause the guardrail contract (agent key may call `pause`; only the owner can unpause). */
+  private async pauseContract(): Promise<void> {
+    const a = this.o.anchor;
+    if (!a?.pause) {
+      this.write("ALERT kill switch: no guardrail contract to pause; entries stay blocked by the agent until the owner resets it");
+      return;
+    }
+    try {
+      await a.pause();
+      this.write("ALERT kill switch: guardrail contract paused; only the owner can unpause it");
+    } catch (e) {
+      this.write(`ALERT kill switch: pausing the contract failed (${e instanceof Error ? e.message : String(e)}); entries stay blocked by the agent`);
     }
   }
 

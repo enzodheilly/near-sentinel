@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ import { defaultRiskConfig as cfg } from "../../src/config/default.ts";
 import { configHash } from "../../src/config/schema.ts";
 import { loadFixtureSet, type FixtureSet } from "../../src/data/fixtures.ts";
 import type { FeedSnapshot } from "../../src/data/feed.ts";
+import { MemoryAnchor, type AnchorKind } from "../../src/execution/anchor.ts";
 import { MemoryKeys } from "../../src/execution/idempotency.ts";
 import { replayLlm, ReplayExecutor } from "../../src/execution/replay.ts";
 import type { Heartbeat } from "../../src/execution/watcher.ts";
@@ -153,5 +154,54 @@ describe("Runner", () => {
     expect(r.nextTickAt(t0 + 10_000)).toBe(t0 + 15_000);
     expect(r.nextTickAt(t0 + 15_000)).toBe(t0 + H + 15_000);
     expect(r.nextTickAt(t0 + 30 * 60_000)).toBe(t0 + H + 15_000);
+  });
+});
+
+describe("Runner: a step that stops half-way", () => {
+  it("keeps the trades it executed before anchoring failed (no forgotten sale)", async () => {
+    const { set, lines, opts } = await setup();
+    const ex = opts.executor as ReplayExecutor;
+    const anchor = new MemoryAnchor();
+    let armed = false, sawTrade = false;
+    const failing = {
+      record: async (h: string, k: AnchorKind) => {
+        if (armed && k === "TRADE") sawTrade = true;
+        if (armed && sawTrade && k !== "TRADE") throw new Error("rpc timeout");
+        return anchor.record(h, k);
+      },
+      lookup: (h: string) => anchor.lookup(h),
+    };
+    vi.useFakeTimers({ now: set.signalBarTime + H + 15_000, toFake: ["Date"] });
+    const runner = await Runner.open({ ...opts, anchor: failing });
+    await runner.tick();
+    expect(runner.state.portfolio.positions.map((p) => p.asset)).toEqual(["NEAR"]);
+    armed = true; // from now on, the first record after an exit's TRADE fails to anchor
+    for (let i = 0; i < 40 && !sawTrade; i++) {
+      vi.setSystemTime(Date.now() + H);
+      await runner.tick();
+    }
+    expect(sawTrade).toBe(true);
+    const held = (await ex.balances()).NEAR;
+    const pos = runner.state.portfolio.positions.find((p) => p.asset === "NEAR");
+    expect(Number(held) / 10 ** cfg.assets.NEAR.decimals).toBeCloseTo(pos?.quantity ?? 0, 6); // the portfolio matches what is held
+    expect(lines.some((l) => /ALERT tick stopped: .*trade\(s\) before it were executed and kept/.test(l))).toBe(true);
+  });
+
+  it("pauses the guardrail contract when the kill switch trips", async () => {
+    const { set, lines, opts, dir } = await setup();
+    const anchor = new MemoryAnchor();
+    vi.useFakeTimers({ now: set.signalBarTime + H + 15_000, toFake: ["Date"] });
+    const first = await Runner.open({ ...opts, anchor });
+    await first.tick();
+    // the peak was far higher: equity is now more than 10% below it
+    const st = JSON.parse(await readFile(join(dir, "state.json"), "utf8"));
+    st.portfolio.peakEquityUsd = 5000;
+    await writeFile(join(dir, "state.json"), JSON.stringify(st));
+    const runner = await Runner.open({ ...opts, anchor });
+    vi.setSystemTime(Date.now() + H);
+    await runner.tick();
+    expect(runner.state.portfolio.killSwitch).toBe(true);
+    expect(anchor.paused).toBe(true);
+    expect(lines.some((l) => /guardrail contract paused/.test(l))).toBe(true);
   });
 });
