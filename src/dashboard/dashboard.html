@@ -96,6 +96,9 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--near); outline-
 dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; margin: 0; font-size: 14px; }
 dt { color: var(--dim); } dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .quiet { color: var(--dim); font-size: 14px; margin: 0; max-width: 46ch; }
+.proofs .facts { margin: 14px 0; }
+.proofs .rt { margin: 0; font-size: 14px; color: var(--dim); } .proofs .rt strong { color: var(--text); font-weight: 500; }
+.proofs .note { font-size: 12.5px; color: var(--faint); margin: 10px 0 0; }
 
 /* log */
 .log { padding: 22px var(--pad) 8px; }
@@ -349,6 +352,24 @@ function chart() {
   $("#market-sub").textContent = refusals ? `Amber marks: setups the agent refused` : "Hourly candles the agent archived";
 }
 
+// the real round trip the live agent's key signed through NEAR Intents (evidence files in test/live/recorded/)
+function liveProof(idle) {
+  const sw = S.swaps.filter((x) => x.status === "SUCCESS");
+  const n = (x, a) => a === "USDC" ? x.toFixed(2) : Number(x.toPrecision(5)).toString();
+  const items = sw.map((x) => el("li", { class: "ok" },
+    el("span", {}, x.side === "buy" ? `Bought ${n(x.amountOut, "NEAR")} NEAR for ${n(x.amountIn, "USDC")} USDC` : `Sold ${n(x.amountIn, "NEAR")} NEAR for ${n(x.amountOut, "USDC")} USDC`,
+      el("small", {}, `${day(x.at)}, ${hhmm(x.at)} UTC${x.settledMs ? `, settled in ${Math.round(x.settledMs / 1000)} s` : ""}${x.tx ? ", " : ""}`,
+        x.tx ? el("a", { href: `https://nearblocks.io/txns/${x.tx}`, target: "_blank", rel: "noopener noreferrer", text: "transaction" }) : "")),
+    el("em", { text: `at ${x.price.toFixed(4)}` })));
+  const buy = sw.find((x) => x.side === "buy"), sell = sw.find((x) => x.side === "sell" && buy && x.at > buy.at);
+  const cost = buy && sell ? buy.amountIn - sell.amountOut : null;
+  return el("div", { class: "proofs" },
+    el("p", { class: "quiet", text: idle ? `Not trading yet. Its own key already signed ${sw.length === 2 ? "two" : sw.length} real swaps through NEAR Intents:` : "Real swaps signed by its key through NEAR Intents:" }),
+    el("ul", { class: "facts" }, ...items),
+    cost != null ? el("p", { class: "rt" }, "Round trip cost ", el("strong", { text: `${cost.toFixed(2)} USDC` }), `, ${(cost / buy.amountIn * 100).toFixed(2)} % of the amount.`) : null,
+    idle ? el("p", { class: "note", text: "Starts trading with pnpm live --yes-real-funds once the owner agrees. Each trade is capped." }) : null);
+}
+
 function cells() {
   const out = [];
   for (const m of S.modes.filter((m) => m.mode === "paper" || m.configured || m.portfolio)) {
@@ -364,8 +385,11 @@ function cells() {
       add("Positions", p.positions.length ? p.positions.map((x) => `${x.asset} from ${x.entryPrice.toPrecision(5)}, stop ${x.stopPrice.toPrecision(5)}`).join("; ") : "None");
       add("Kill switch", p.killSwitch ? "On, owner reset needed" : "Off", p.killSwitch ? "bad" : "");
     }
-    out.push(el("div", { class: "cell" }, el("h3", {}, m.mode === "live" ? "Live agent" : "Paper agent", el("em", { text: m.mode === "live" ? "Real funds" : "Real market, simulated fills" })), pill,
-      p || m.heartbeat ? dl : el("p", { class: "quiet", text: m.mode === "live" ? "Starts with pnpm live --yes-real-funds once the owner agrees. Each trade is capped." : "Starts with pnpm paper." })));
+    const proven = m.mode === "live" && (S.swaps || []).some((x) => x.status === "SUCCESS");
+    const livePill = proven && !m.running && !p ? el("span", { class: "pill on", text: "Proven on mainnet" }) : pill;
+    out.push(el("div", { class: "cell" }, el("h3", {}, m.mode === "live" ? "Live agent" : "Paper agent", el("em", { text: m.mode === "live" ? "Real funds" : "Real market, simulated fills" })), livePill,
+      p || m.heartbeat ? dl : m.mode === "live" && proven ? null : el("p", { class: "quiet", text: m.mode === "live" ? "Starts with pnpm live --yes-real-funds once the owner agrees. Each trade is capped." : "Starts with pnpm paper." }),
+      m.mode === "live" && proven ? liveProof(!(p || m.heartbeat)) : null));
   }
   for (const g of S.guardrails) {
     const dl = el("dl");
