@@ -150,3 +150,16 @@ describe("chart candles", () => {
     }
   });
 });
+
+describe("a demo run does not hide the agent's decisions", () => {
+  it("the log is the newest by decision time, even after hundreds of replayed records were written", async () => {
+    const root = await fixture();
+    // pnpm demo afterwards: 300 records decided in July, written now (newer files than the agent's)
+    const jul = Date.parse("2026-07-20T10:00:00Z");
+    await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 300; i++) await writeFile(join(root, "records", `${(0xd000 + i).toString(16).padStart(64, "d")}.json`), JSON.stringify(hold(jul + i * H, jul + i * H + H)));
+    const s = await buildDashboardState({ root, env: {}, now: NOW, limit: 10 });
+    expect(s.decisions.map((d) => d.hash[0])).toEqual(["a", "b"]);
+    expect(s.funnel.total).toBe(2);
+  });
+});

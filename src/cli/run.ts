@@ -37,6 +37,7 @@ import { FileBalanceStore, PaperExecutor } from "../execution/paper.ts";
 import { FileHeartbeat } from "../execution/watcher.ts";
 import { gitVersion } from "./demo.ts";
 import { saveState, type SavedState } from "./status.ts";
+import { acquireLock } from "./lock.ts";
 
 const H = INTERVAL_MS["1h"];
 
@@ -284,6 +285,19 @@ export const paperPaths = (root: string) => ({
 export async function runPaper(o: { root: string; env: NodeJS.ProcessEnv; write: (l: string) => void; signals?: NodeJS.Process }): Promise<number> {
   const cfg = defaultRiskConfig;
   const P = paperPaths(o.root);
+  const lock = await acquireLock(join(dirname(P.state), "agent.lock"));
+  if ("heldBy" in lock) {
+    o.write(`another paper agent is already running from this folder (process ${lock.heldBy}); stop it first (Ctrl+C in its terminal, or kill ${lock.heldBy}). Two agents would decide every bar twice.`);
+    return 2;
+  }
+  try {
+    return await paperLoop(o, cfg, P);
+  } finally {
+    await lock.release();
+  }
+}
+
+async function paperLoop(o: { root: string; env: NodeJS.ProcessEnv; write: (l: string) => void; signals?: NodeJS.Process }, cfg: RiskConfig, P: ReturnType<typeof paperPaths>): Promise<number> {
   const oneclick = new OneClickClient({ jwt: o.env["ONECLICK_JWT"] });
   const binance = new BinanceClient();
   const key = o.env["NEARAI_API_KEY"];
@@ -363,6 +377,12 @@ export async function runLive(o: { root: string; env: NodeJS.ProcessEnv; args: r
   }
   const cap = Number(e["LIVE_MAX_NOTIONAL_USD"] ?? 10);
   const P = livePaths(o.root);
+  const lock = await acquireLock(join(dirname(P.state), "agent.lock"));
+  if ("heldBy" in lock) {
+    o.write(`another live agent is already running from this folder (process ${lock.heldBy}); stop it first. Two live agents could trade twice.`);
+    return 2;
+  }
+  try {
   const oneclick = new OneClickClient({ jwt: e["ONECLICK_JWT"] });
   const binance = new BinanceClient();
   const nearaiKey = e["NEARAI_API_KEY"];
@@ -385,7 +405,7 @@ export async function runLive(o: { root: string; env: NodeJS.ProcessEnv; args: r
   o.write(`NEAR Sentinel LIVE · ${account} · cap $${cap}/trade · anchoring in ${e["LIVE_NEAR_GUARDRAIL_CONTRACT"]} (${e["LIVE_NEAR_NETWORK"] ?? "mainnet"}) · equity $${runner.state.portfolio.equityUsd.toFixed(2)} · Ctrl+C stops cleanly`);
   runner.start();
   const proc = o.signals ?? process;
-  return new Promise<number>((resolve) => {
+  return await new Promise<number>((resolve) => {
     let stopping = false;
     const onSignal = (sig: string) => {
       if (stopping) return;
@@ -396,4 +416,7 @@ export async function runLive(o: { root: string; env: NodeJS.ProcessEnv; args: r
     proc.on("SIGINT", () => onSignal("SIGINT"));
     proc.on("SIGTERM", () => onSignal("SIGTERM"));
   });
+  } finally {
+    await lock.release();
+  }
 }
