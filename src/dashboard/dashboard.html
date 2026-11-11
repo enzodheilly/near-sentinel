@@ -511,7 +511,13 @@ if (renderer) {
   at(sc(new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.1, 6, 16), pants)), 0, -0.33, 0.02, bot).rotation.x = Math.PI / 2;
   const head = at(new THREE.Group(), 0, 0.74, 0, bot);
   head.add(sc(new THREE.Mesh(new THREE.SphereGeometry(0.34, 40, 32), shell)));
-  at(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.11, 48, 1, true, -1.05, 2.1), visorMat), 0, -0.02, 0, head);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ec97, toneMapped: false });
+  // two glowing eyes on the face (their colour follows the mood; they blink and close when asleep)
+  const eyes = [-1, 1].map((s) => {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.044, 20, 14), eyeMat);
+    const a = 0.27 * s; const y = -0.055, r = Math.sqrt(0.34 ** 2 - y * y) - 0.012; e.position.set(Math.sin(a) * r, y, Math.cos(a) * r); e.rotation.y = a;
+    e.scale.set(1, 1.25, 0.45); head.add(e); return e;
+  });
   at(sc(new THREE.Mesh(new THREE.SphereGeometry(0.362, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2.1), capMat)), 0, 0.045, 0, head);
   const brim = at(sc(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.028, 40, 1, false, -Math.PI / 2, Math.PI), capMat)), 0, 0.07, 0.15, head); brim.rotation.x = 0.1;
   // flat patch on a curved crown: sit it just outside the surface (crown radius + the curve's depth under its corners)
@@ -670,9 +676,9 @@ if (renderer) {
     const t = STEP ? T0 + (stepN++) * STEP : clock.getElapsedTime() + T0; // ?step=: fixed time per frame (screenshots)
     const mood = (window.__agent && window.__agent.mood) || "boot";
     const col = colors[mood] ?? colors.work;
-    visorMat.emissive.setHex(col); rim.color.setHex(col);
+    visorMat.emissive.setHex(col); eyeMat.color.setHex(col); rim.color.setHex(col);
     for (const s of screens) s.light.color.setHex(col), s.leak.material.color.setHex(col), (s.light.intensity = mood === "sleep" ? 0.05 : 0.6), (s.leak.visible = mood !== "sleep");
-    visorMat.emissiveIntensity = mood === "sleep" ? 0.2 : 1.3 + 0.25 * Math.sin(t * 2.4);
+    visorMat.emissiveIntensity = mood === "sleep" ? 0.4 : 1.6 + 0.2 * Math.sin(t * 2.4);
     const working = mood === "work" || mood === "boot";
     world.rotation.y = (RY ?? 0.3) + 0.03 * Math.sin(t * 0.25);
     bot.position.y = mood === "sleep" ? -0.04 : 0.008 * Math.sin(t * 1.6);
@@ -777,7 +783,8 @@ if (renderer) {
     torso.rotation.x = (mood === "sleep" ? 0.12 : 0) + leanX;
     torso.scale.set(1, 1 + 0.012 * Math.sin(t * 1.6), 1);
     if (t > nextBlink) { blinkAt = t; nextBlink = t + range(2.5, 7); }
-    if (mood !== "sleep" && t - blinkAt < 0.14) visorMat.emissiveIntensity = 0.25;
+    const open = mood === "sleep" ? 0.12 : t - blinkAt < 0.14 ? 0.15 : 1.25;
+    for (const e of eyes) e.scale.y += (open - e.scale.y) * f(mood === "sleep" ? 3 : 40);
 
     if (Math.floor(t * 4) !== lastScreen) { lastScreen = Math.floor(t * 4); drawScreens(t, mood); }
     renderer.render(scene, camera);
