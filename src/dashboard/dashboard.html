@@ -1094,23 +1094,23 @@ if (renderer) {
   for (const s of [-1, 1]) {
     // side by side in front of the robot, screens toward it (-z), outer edges turned in a little.
     // Seen from the front we get their backs: a casing and a soft glow leaking around the edges.
-    const mon = at(new THREE.Group(), 0.335 * s, TOP, 0.34, desk);
+    const mon = at(new THREE.Group(), 0.47 * s, TOP, 0.42, desk);
     mon.rotation.y = Math.PI + 0.2 * s;
-    at(box(0.045, 0.16, 0.045, metal), 0, 0.08, -0.03, mon);
-    at(box(0.22, 0.015, 0.16, metal), 0, 0.008, 0, mon);
-    const panel = at(new THREE.Group(), 0, 0.33, 0.0, mon);
-    panel.add(box(0.66, 0.39, 0.03, dark));
-    at(box(0.34, 0.22, 0.05, mat(0x33414b, { roughness: 0.45, metalness: 0.3 })), 0, -0.01, -0.035, panel);
+    at(box(0.05, 0.14, 0.05, metal), 0, 0.07, -0.04, mon);
+    at(box(0.28, 0.015, 0.2, metal), 0, 0.008, -0.02, mon);
+    const panel = at(new THREE.Group(), 0, 0.4, 0.0, mon);
+    panel.add(box(0.92, 0.55, 0.03, dark)); // about a 24-inch screen next to the agent
+    at(box(0.46, 0.3, 0.05, mat(0x33414b, { roughness: 0.45, metalness: 0.3 })), 0, -0.01, -0.035, panel);
     const tex = canvasTex(512, 310);
-    at(new THREE.Mesh(new THREE.PlaneGeometry(0.63, 0.36), new THREE.MeshBasicMaterial({ map: tex.t, toneMapped: false })), 0, 0, 0.016, panel);
-    const leak = at(new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.47), new THREE.MeshBasicMaterial({ color: 0x00ec97, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false })), 0, 0, 0.02, panel);
+    at(new THREE.Mesh(new THREE.PlaneGeometry(0.89, 0.52), new THREE.MeshBasicMaterial({ map: tex.t, toneMapped: false })), 0, 0, 0.016, panel);
+    const leak = at(new THREE.Mesh(new THREE.PlaneGeometry(1.02, 0.65), new THREE.MeshBasicMaterial({ color: 0x00ec97, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false })), 0, 0, 0.02, panel);
     const light = at(new THREE.PointLight(0x00ec97, 0.6, 1.6), 0, 0, 0.3, panel);
     screens.push({ tex, light, leak });
   }
   // keyboard and mouse
   const kb = at(box(0.62, 0.025, 0.2, dark), 0, TOP + 0.012, 0.02, desk);
   at(new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.16), mat(0x2c3a44)), 0, 0.013, 0, kb).rotation.x = -Math.PI / 2;
-  const MOUSE_HOME = new THREE.Vector3(0.8, TOP + 0.022, -0.16);
+  const MOUSE_HOME = new THREE.Vector3(1.08, TOP + 0.022, -0.2);
   const mouse = at(sc(new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.05, 6, 12), dark)), MOUSE_HOME.x, MOUSE_HOME.y, MOUSE_HOME.z, desk); mouse.rotation.x = Math.PI / 2;
   const mousePad = at(new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.2), mat(0x1a242b, { roughness: 0.95 })), MOUSE_HOME.x, TOP + 0.002, MOUSE_HOME.z, desk); mousePad.rotation.x = -Math.PI / 2;
   // notepad and pencil on the robot's right (our left)
@@ -1124,7 +1124,7 @@ if (renderer) {
     padTex.t.needsUpdate = true;
   };
   drawPadBase();
-  const pad = at(new THREE.Group(), -0.78, TOP + 0.004, -0.12, desk); pad.rotation.y = 0.35;
+  const pad = at(new THREE.Group(), -1.1, TOP + 0.004, -0.18, desk); pad.rotation.y = 0.3;
   at(new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.44), new THREE.MeshStandardMaterial({ map: padTex.t, roughness: 0.9 })), 0, 0, 0, pad).rotation.x = -Math.PI / 2;
   const pencil = sc(new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.17, 10), mat(0xffb547, { roughness: 0.6 })));
   const tip = at(new THREE.Mesh(new THREE.ConeGeometry(0.009, 0.025, 10), mat(0x222222)), 0, -0.097, 0, pencil); tip.rotation.x = Math.PI;
@@ -1335,7 +1335,7 @@ if (renderer) {
     const keyAt = (x, z) => v(x, 0.045, z, kb);
     pencilRest.copy(v(0.2, 0.012, 0.0, pad)); pencilRestDir.copy(v(0.2, 0.012, 0.12, pad)).sub(pencilRest).normalize();
     const above = (p, h) => p.clone().add(new THREE.Vector3(0, h, 0));
-    const mugHome = v(1.02, TOP + 0.08, 0.12, desk);
+    const mugHome = v(1.2, TOP + 0.08, 0.28, desk);
     const restR = v(-0.3, 0.03, -0.14, kb), restL = v(0.3, 0.03, -0.14, kb);
     // typing: each hand hops between keys, bursts and pauses differ per activity
     const typing = (s, rate) => {
