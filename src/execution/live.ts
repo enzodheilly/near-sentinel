@@ -32,7 +32,10 @@ export interface LiveOptions {
   readonly client: Pick<OneClickClient, "quote" | "toQuote" | "generateIntent" | "submitIntent" | "status">;
   readonly near: NearSigner;
   readonly account: string;
-  /** Hard cap per trade in USD (entries: notional; exits: quantity × reference price). */
+  /**
+   * Hard cap per entry in USD. Exits are not capped: they only sell what a capped entry bought, and a cap that
+   * blocked a stop would be worse than none.
+   */
   readonly maxNotionalUsd: number;
   readonly clock?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -76,6 +79,7 @@ export class LiveExecutor implements Executor {
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(o: LiveOptions) {
+    if (!Number.isFinite(o.maxNotionalUsd) || o.maxNotionalUsd <= 0) throw new Error(`maxNotionalUsd must be a positive number, got ${o.maxNotionalUsd}`);
     this.o = o;
     this.clock = o.clock ?? Date.now;
     this.sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -99,15 +103,16 @@ export class LiveExecutor implements Executor {
   }
 
   async quote(p: TradeProposal, slippageBps: number): Promise<Quote> {
-    const usd = p.kind === "ENTRY" ? p.notionalUsd : p.quantity * p.referencePrice;
-    if (p.kind === "ENTRY" && usd > this.o.maxNotionalUsd) {
-      throw new Error(`live cap: $${usd.toFixed(2)} is above the owner's per-trade cap of $${this.o.maxNotionalUsd}`);
+    if (p.kind === "ENTRY" && p.notionalUsd > this.o.maxNotionalUsd) {
+      throw new Error(`live cap: $${p.notionalUsd.toFixed(2)} is above the owner's per-trade cap of $${this.o.maxNotionalUsd}`);
     }
     const held = p.kind === "EXIT" ? (await this.balances())[p.asset] : undefined;
     const req = this.request(p, slippageBps, held);
     const res = await this.o.client.quote(req);
     const q = this.o.client.toQuote(res, req, this.clock());
     if (!q.depositAddress) throw new Error("1Click returned no depositAddress for an INTENTS quote");
+    // EXACT_INPUT: what gets signed is q.amountIn, so it must be exactly what was asked (and therefore under the cap)
+    if (q.amountIn.toString() !== req.amount) throw new Error(`1Click quoted an input of ${q.amountIn}, not the requested ${req.amount}; refusing it`);
     return q;
   }
 
@@ -135,8 +140,8 @@ export class LiveExecutor implements Executor {
     try {
       intentHash = (await this.o.client.submitIntent(signedData)).intentHash;
     } catch (e) {
-      // not known to be submitted: report FAILED; the idempotency key stays pending, so it is never re-sent blindly
-      return { ...base, status: "FAILED", txRefs: [], error: `submit-intent: ${msg(e)}` };
+      // the signed intent may have reached the solver before the error: outcome unknown, the agent stops trading
+      return { ...base, status: "UNKNOWN", txRefs: [], error: `submit-intent: ${msg(e)}; the signed intent may have been received` };
     }
 
     const until = this.clock() + (this.o.statusTimeoutMs ?? 180_000);
@@ -152,7 +157,7 @@ export class LiveExecutor implements Executor {
     }
     const txRefs = [intentHash, ...(st?.swapDetails?.destinationChainTxHashes ?? []).map((t) => t.hash), ...(st?.swapDetails?.originChainTxHashes ?? []).map((t) => t.hash)];
     const withHash = { ...base, intentHash, txRefs };
-    if (!st || !TERMINAL.has(st.status)) return { ...withHash, status: "FAILED", error: `no final status within ${(this.o.statusTimeoutMs ?? 180_000) / 1000} s (last ${st?.status ?? "none"}); check ${intentHash}` };
+    if (!st || !TERMINAL.has(st.status)) return { ...withHash, status: "UNKNOWN", error: `no final status within ${(this.o.statusTimeoutMs ?? 180_000) / 1000} s (last ${st?.status ?? "none"}); check ${intentHash}` };
     if (st.status !== "SUCCESS") return { ...withHash, status: st.status === "REFUNDED" ? "REFUNDED" : "FAILED", error: st.swapDetails?.refundReason ?? st.status };
 
     const A = this.o.cfg.assets;

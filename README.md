@@ -100,6 +100,7 @@ What this means in practice:
 - **The agent host is trusted for amounts.** Its intent key can trade, and could withdraw, the agent's NEAR Intents balance, so that balance is kept small (about $10) and each live trade is capped by `LIVE_MAX_NOTIONAL_USD`. Tier 2, where the contract checks each intent and requests an MPC signature through Chain Signatures, is designed in ARCHITECTURE.md §8.2 and §16.1 but not built.
 - **The contract caps trades in count, not in dollars.** It has no price oracle.
 - **Long-only spot.** In a falling market the agent mostly holds. That is intended: risk-off means staying in USDC.
+- **A swap with no final answer halts the agent.** If 1Click does not confirm a swap within 3 minutes, or the connection drops right after the signed intent is sent, the agent stops trading (ticks and stops alike) instead of guessing. The owner checks the intent, then restarts with `pnpm live --yes-real-funds --resume`.
 - **Stops are evaluated by the agent**, every 60 s between closes, not resting on an exchange. If the agent is offline, a stop waits for it to come back. The dashboard and `pnpm status` raise an alert when the heartbeat is older than 5 minutes.
 - **LLM attestation is partial.** We verify the ed25519 signature and bind it to our exact bytes and to the signer keys listed in the attestation report. We do not re-verify the hardware quotes (Intel TDX, NVIDIA).
 - **Market data comes from Binance** (`data-api.binance.vision`, keyless). The dashboard chart shows the Hyperliquid NEAR perpetual for display only. Decisions never use it.

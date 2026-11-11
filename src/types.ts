@@ -182,7 +182,8 @@ export interface Quote {
 
 export type ExecutionMode = "replay" | "paper" | "live";
 
-export type ExecutionStatus = "SIMULATED" | "QUOTED" | "SUCCESS" | "REFUNDED" | "FAILED";
+/** UNKNOWN: the swap may have been sent and its outcome is not known (no answer, timeout). Never retried blindly. */
+export type ExecutionStatus = "SIMULATED" | "QUOTED" | "SUCCESS" | "REFUNDED" | "FAILED" | "UNKNOWN";
 
 export interface ExecutionReport {
   readonly mode: ExecutionMode;

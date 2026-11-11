@@ -205,3 +205,28 @@ describe("Runner: a step that stops half-way", () => {
     expect(lines.some((l) => /guardrail contract paused/.test(l))).toBe(true);
   });
 });
+
+describe("Runner: a swap whose outcome is unknown", () => {
+  it("halts trading (ticks and watcher), saves it, and stays halted after a restart", async () => {
+    const { set, lines, opts, dir } = await setup({
+      executor: (clock) => {
+        const inner = new ReplayExecutor(cfg, { USDC: 1000, BTC: 0, NEAR: 0 }, clock);
+        return { mode: inner.mode, quote: (p, b) => inner.quote(p, b), balances: () => inner.balances(),
+          execute: async (_p, q): Promise<ExecutionReport> => ({ mode: "replay", status: "UNKNOWN", quote: q, txRefs: ["IH1"], intentHash: "IH1", error: "no final status within 180 s" }) };
+      },
+    });
+    vi.useFakeTimers({ now: set.signalBarTime + H + 15_000, toFake: ["Date"] });
+    const runner = await Runner.open(opts);
+    await runner.tick();
+    expect(runner.state.halted).toMatch(/ENTRY NEAR: outcome unknown .*intent IH1/);
+    expect(lines.some((l) => /ALERT trading halted/.test(l))).toBe(true);
+    const before = (await readdir(join(dir, "records"))).length;
+    vi.setSystemTime(Date.now() + H);
+    await runner.tick();
+    expect((await readdir(join(dir, "records"))).length).toBe(before); // no more decisions while halted
+    const again = await Runner.open(opts);
+    expect(again.state.halted).toBeDefined();
+    await again.resume();
+    expect((await Runner.open(opts)).state.halted).toBeUndefined();
+  });
+});
