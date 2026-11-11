@@ -57,6 +57,11 @@ describe("dashboard state", () => {
     expect(s.decisions[1]!.checks[1]).toEqual({ name: "confirmations", ok: false, value: 1, limit: 2, detail: "RSI_MOMENTUM" });
     expect(s.decisions[1]!.review).toEqual({ model: "m", verdict: "reduce", sizeMultiplier: 0.5, rationale: "thin volume", attestation: "verified" });
     expect(s.decisions[0]!.review).toBeUndefined();
+    // the funnel counts where every decision of the week stopped
+    expect(s.funnel.total).toBe(s.decisions.length);
+    expect(s.funnel.stopped.breakout + s.funnel.stopped.confirm + s.funnel.stopped.risk + s.funnel.stopped.llm + s.funnel.stopped.policy + s.funnel.trades).toBe(s.funnel.total);
+    expect(s.funnel.stopped.confirm).toBe(1); // the BTC-trend refusal
+    expect(s.funnel.reasons).toEqual({ VETO_BTC_REGIME: 1 });
     expect(s.counts).toEqual({ total: 2, trades: 0, rejects: 1, holds: 1 });
     // anchors are cached: a second build does not ask the chain again for them
     const before = calls.filter((c) => c.endsWith("get_decision")).length;
@@ -95,6 +100,18 @@ describe("dashboard server", () => {
     for (const path of ["/vendor/three.module.js", "/vendor/three.core.js", "/vendor/RoomEnvironment.js", "/fonts/chakra-600.woff2", "/assets/near-logo.png"]) expect((await fetch(`${url}${path}`)).status).toBe(200);
     for (const path of ["/vendor/../../package.json", "/fonts/x.woff2", "/constructor", "/__proto__"]) expect((await fetch(`${url}${path}`)).status).toBe(404);
     expect(page.headers.get("content-security-policy")).toMatch(/script-src 'self' 'unsafe-inline'; .*font-src 'self'/);
+  });
+});
+
+describe("funnel stages", () => {
+  it("maps each outcome to the step that stopped it", async () => {
+    const { funnelStage } = await import("../../src/dashboard/state.ts");
+    expect(funnelStage("HOLD", "NO_SIGNAL")).toBe("breakout");
+    expect(funnelStage("REJECT", "VETO_BTC_REGIME")).toBe("confirm");
+    expect(funnelStage("REJECT", "COST_TOO_HIGH")).toBe("risk");
+    expect(funnelStage("REJECT", "LLM_VETO")).toBe("llm");
+    expect(funnelStage("REJECT", "POLICY_DENIED")).toBe("policy");
+    expect(funnelStage("TRADE")).toBe("trade");
   });
 });
 

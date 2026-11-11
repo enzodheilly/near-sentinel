@@ -69,9 +69,32 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--near); outline-
 .stage .tag { position: absolute; left: var(--pad); bottom: 18px; font-size: 13px; color: var(--dim); }
 .stage .tag strong { color: var(--text); font-weight: 500; }
 
+.about { margin: 0 0 26px; max-width: 62ch; font-size: 14.5px; color: var(--dim); }
+.lede { margin: -4px 0 16px; max-width: 76ch; font-size: 14px; color: var(--dim); }
+
+/* funnel: where the week's decisions stopped */
+.funnel { border-bottom: 1px solid var(--rule); padding: 26px var(--pad) 24px; }
+.fun { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.fun li { display: grid; grid-template-columns: minmax(150px, 220px) 64px minmax(0, 1fr) minmax(180px, 34%); gap: 16px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
+.fun li:last-child { border-bottom: 0; }
+.fun b { font: 500 14.5px var(--display); }
+.fun .n { font: 600 20px/1 var(--display); text-align: right; font-variant-numeric: tabular-nums; }
+.fun .bar { height: 10px; background: var(--rule); position: relative; }
+.fun .bar i { position: absolute; inset: 0 auto 0 0; background: var(--near); min-width: 2px; }
+.fun .stop { color: var(--dim); font-size: 13px; }
+.fun .stop em { font-style: normal; color: var(--amber); }
+.fun li.end b, .fun li.end .n { color: var(--near); }
+.fun li.zero .bar i { background: var(--faint); }
+.agents-wrap { padding: 26px var(--pad) 4px; }
+@media (max-width: 760px) {
+  .fun li { grid-template-columns: minmax(0, 1fr) 48px; row-gap: 6px; }
+  .fun .bar, .fun .stop { grid-column: 1 / -1; }
+}
+
 /* market */
 .market { border-bottom: 1px solid var(--rule); padding: 22px var(--pad) 14px; }
 .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.head h2 { font-size: 20px !important; }
 .head h2 { margin: 0; font: 600 18px/1.2 var(--display); }
 .head span { font-size: 13px; color: var(--dim); }
 .quote { display: flex; align-items: baseline; gap: 14px; margin: -2px 0 14px; }
@@ -202,6 +225,7 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
 <section class="hero">
   <div class="call">
     <div>
+      <p class="about">An autonomous agent that trades NEAR and Bitcoin. At every hourly close it decides whether to buy, writes the decision on chain before acting, and a NEAR contract it cannot overrule caps what it may do. This page watches it, read-only.</p>
       <div class="kicker" id="kicker">Latest decision</div>
       <h1 class="verdict" id="verdict">—</h1>
       <p class="because" id="because">Reading the agent's records.</p>
@@ -218,17 +242,29 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
   </div>
 </section>
 
+<section class="funnel" aria-labelledby="f-title">
+  <div class="head"><h2 id="f-title">Why it rarely trades</h2><span id="funnel-sub"></span></div>
+  <p class="lede">Every hourly close is a decision, even when nothing happens. Each step below can stop it, and only a setup that clears all of them becomes a trade. Holding is the agent doing its job.</p>
+  <ol class="fun" id="funnel"></ol>
+</section>
+
 <section class="market">
   <div class="head"><h2>NEAR / USD <small class="venue">Hyperliquid perp</small></h2><span id="market-sub"></span></div>
+  <p class="lede">The market the agent watches. Amber marks are setups it refused; an open position shows its entry, stop and targets.</p>
   <div class="quote" id="quote"></div>
   <div class="tools tf" id="tf" role="group" aria-label="Candle interval"></div>
   <div class="chart" id="chart"><svg id="chart-svg" role="img" aria-label="NEAR price chart with the agent's decisions"></svg></div>
 </section>
 
+<section class="agents-wrap" aria-labelledby="a-title">
+  <div class="head"><h2 id="a-title">The same agent, twice</h2></div>
+  <p class="lede">On paper with simulated money, and live with real money through NEAR Intents. Each one answers to its own guardrail contract on NEAR, which caps its trades and can pause it.</p>
+</section>
 <section class="agents" id="agents" aria-label="The two agents"></section>
 
 <section class="log">
   <div class="head"><h2>Decision log</h2><span id="log-sub"></span></div>
+  <p class="lede">Every decision with its reason. Open one to see what the agent saw, each rule it checked, and how to verify it.</p>
   <div class="tools" id="tools" role="group" aria-label="Filter the log"></div>
   <div class="scroll"><table>
     <thead><tr><th>Bar, UTC</th><th>Asset</th><th>Decision</th><th>On chain</th><th aria-label="Open"></th></tr></thead>
@@ -418,7 +454,10 @@ function chart() {
     return;
   }
   const R = 58, B = 24, T = 10;
-  let lo = Math.min(...c.map((k) => k[3])), hi = Math.max(...c.map((k) => k[2]));
+  // an open NEAR position (paper or live): its entry, stop and both targets are drawn on the chart
+  const pos = S ? S.modes.flatMap((m) => (m.portfolio ? m.portfolio.positions : []).filter((p) => p.asset === "NEAR").map((p) => ({ ...p, mode: m.mode }))) : [];
+  const levels = pos.flatMap((p) => [[p.entryPrice, "Entry", "#e9f3ef", ""], [p.stopPrice, "Stop", "#ff6b5e", ""], [p.takeProfit[0], "Target 1", "#00ec97", "4 4"], [p.takeProfit[1], "Target 2", "#00ec97", "4 4"]].map((l) => [...l, p.mode]));
+  let lo = Math.min(...c.map((k) => k[3]), ...levels.map((l) => l[0])), hi = Math.max(...c.map((k) => k[2]), ...levels.map((l) => l[0]));
   const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
   const x = (i) => (i + 0.5) * ((W - R) / c.length);
   const y = (v) => T + (hi - v) / (hi - lo) * (H - T - B);
@@ -438,6 +477,12 @@ function chart() {
     add("line", { x1: x(i), x2: x(i), y1: y(k[2]), y2: y(k[3]), stroke: col, "stroke-width": 1 });
     add("rect", { x: x(i) - bw / 2, y: y(Math.max(k[1], k[4])), width: bw, height: Math.max(1, Math.abs(y(k[1]) - y(k[4]))), fill: col });
   });
+  for (const [v, name, col, dash, mode] of levels) {
+    add("line", { x1: 0, x2: W - R, y1: y(v), y2: y(v), stroke: col, "stroke-opacity": 0.8, "stroke-dasharray": dash || "none" });
+    const label = `${name} ${v.toFixed(dec)}${pos.length > 1 || mode === "live" ? `, ${mode}` : ""}`;
+    add("rect", { x: 2, y: y(v) - 17, width: label.length * 6.4 + 10, height: 15, fill: "#05090d", "fill-opacity": 0.85 });
+    const t = add("text", { x: 7, y: y(v) - 6 }); t.textContent = label; t.style.fill = col;
+  }
   // last price line
   const last = c[c.length - 1][4];
   add("line", { x1: 0, x2: W - R, y1: y(last), y2: y(last), stroke: "#e9f3ef", "stroke-opacity": 0.35, "stroke-dasharray": "2 4" });
@@ -669,7 +714,33 @@ function openDetail(d) {
 }
 $("#detail").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }); // click on the backdrop
 
-function render() { hero(); chart(); agents(); log(); }
+// ---------- funnel
+function funnel() {
+  const f = S.funnel;
+  if (!f) return;
+  $("#funnel-sub").textContent = `Last ${f.days} days, NEAR and Bitcoin`;
+  const top = (keys) => Object.entries(f.reasons).filter(([k]) => keys ? keys.includes(k) : !["INSUFFICIENT_CONFLUENCE", "VETO_RSI_EXHAUSTION", "VETO_BTC_REGIME", "LLM_VETO", "POLICY_DENIED"].includes(k))
+    .sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k, n]) => `${why[k] || k} (${n})`).join(", ");
+  const st = f.stopped;
+  let left = f.total;
+  const rows = [["Decisions", "", left, ""]];
+  for (const [label, n, note] of [
+    ["Breakout found", st.breakout, "no breakout"],
+    ["Confirmed", st.confirm, top(["INSUFFICIENT_CONFLUENCE", "VETO_RSI_EXHAUSTION", "VETO_BTC_REGIME"])],
+    ["Within the risk rules", st.risk, top(null)],
+    ["LLM did not veto", st.llm, "vetoed by the LLM"],
+    ["Traded", st.policy, "refused by the guardrail contract"],
+  ]) { left -= n; rows.push([label, n, left, note]); }
+  $("#funnel").replaceChildren(...rows.map(([label, n, remain, note], i) => el("li", { class: (i === rows.length - 1 ? "end" : "") + (remain === 0 ? " zero" : "") },
+    el("b", { text: label }),
+    el("span", { class: "n", text: String(remain) }),
+    el("span", { class: "bar", "aria-hidden": "true" }, el("i", { style: `width:${f.total ? (remain / f.total) * 100 : 0}%` })),
+    el("span", { class: "stop" }, ...(i === 0 ? [f.total ? "every hourly close, both assets" : "none yet: the first lands at the next hourly close"]
+      : n ? [el("em", { text: `${n} stopped here` }), note ? `: ${note}` : ""]
+      : [rows[i - 1][2] === 0 ? "none reached this step" : i === rows.length - 1 ? "the contract allowed every trade asked" : "none stopped here"])))));
+}
+
+function render() { hero(); funnel(); chart(); agents(); log(); }
 async function refresh() {
   try {
     const r = await fetch("/api/state", { cache: "no-store" });
