@@ -116,6 +116,11 @@ td.h { color: var(--faint); font-size: 12px; max-width: 190px; overflow: hidden;
 .out.reject { color: var(--amber); } .out.reject::before { background: var(--amber); }
 .out.hold { color: var(--dim); }
 tbody tr.row { cursor: pointer; }
+tr.fold td { color: var(--dim); background: rgba(14, 26, 34, 0.5); }
+tr.fold td.fold-hint { color: var(--near); }
+tr.inner td:first-child { box-shadow: inset 3px 0 0 var(--rule-2); }
+.more { display: flex; align-items: center; gap: 14px; padding: 16px 0 10px; font-size: 13px; color: var(--faint); }
+.more:empty { display: none; }
 tbody tr.row:focus-visible { outline: 2px solid var(--near); outline-offset: -2px; }
 
 /* decision detail: a drawer on the right */
@@ -206,6 +211,7 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
     <thead><tr><th>Decided</th><th>Bar, UTC</th><th>Asset</th><th>Outcome</th><th>Reason</th><th>LLM</th><th>On chain</th><th>Record</th></tr></thead>
     <tbody id="log"></tbody>
   </table></div>
+  <div class="more" id="log-more"></div>
 </section>
 <dialog class="detail" id="detail" aria-labelledby="d-verdict"></dialog>
 <footer>Local page on 127.0.0.1, refreshed every 15 seconds. No wallet and no keys: nothing here can act. Recompute any record with pnpm verify and its hash.</footer>
@@ -379,12 +385,24 @@ function cells() {
   $("#cells").replaceChildren(...out);
 }
 
+// consecutive holds for the same reason on the same day fold into one row; 10 rows at a time
+let logLimit = 10;
+const opened = new Set();
 function log() {
   const shown = S.decisions.filter((d) => filter === "ALL" || d.action === filter || (filter === "ACTIVE" && d.action !== "HOLD"));
   $("#log-sub").textContent = `${shown.length} in the last 7 days. Open one to see what the agent saw.`;
   const opts = [["ALL", "All"], ["ACTIVE", "Trades and refusals"], ["TRADE", "Trades"], ["REJECT", "Refusals"], ["HOLD", "Holds"]];
-  $("#tools").replaceChildren(...opts.map(([k, t]) => el("button", { type: "button", "aria-pressed": String(filter === k), onclick: () => { filter = k; log(); } }, t)));
-  const rows = shown.map((d) => el("tr", { class: "row", tabindex: "0", "aria-label": `Open the ${d.asset} decision of ${day(d.barTime)} ${hhmm(d.barTime)}`, onclick: (e) => { if (!e.target.closest("a")) openDetail(d); }, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(d); } } },
+  $("#tools").replaceChildren(...opts.map(([k, t]) => el("button", { type: "button", "aria-pressed": String(filter === k), onclick: () => { filter = k; logLimit = 10; log(); } }, t)));
+
+  const items = [];
+  for (const d of shown) {
+    const last = items[items.length - 1];
+    if (d.action === "HOLD" && last && last.group && last.reason === d.reason && day(last.group[0].barTime) === day(d.barTime)) last.group.push(d);
+    else if (d.action === "HOLD") items.push({ group: [d], reason: d.reason });
+    else items.push({ one: d });
+  }
+  const flat = items.flatMap((it) => it.one ? [it] : it.group.length >= 3 ? [it] : it.group.map((d) => ({ one: d })));
+  const row = (d, inner) => el("tr", { class: "row" + (inner ? " inner" : ""), tabindex: "0", "aria-label": `Open the ${d.asset} decision of ${day(d.barTime)} ${hhmm(d.barTime)}`, onclick: (e) => { if (!e.target.closest("a")) openDetail(d); }, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(d); } } },
     el("td", { class: "t", text: ago(d.at, S.at) }),
     el("td", { class: "t", text: `${day(d.barTime)}, ${hhmm(d.barTime)}` }),
     el("td", { text: d.asset }),
@@ -392,8 +410,28 @@ function log() {
     el("td", { text: d.action === "TRADE" ? d.detail : cap(why[d.reason] || d.reason || d.detail) }),
     el("td", { class: "t", text: d.llm || "Not asked" }),
     el("td", {}, d.anchor ? el("a", { href: nearblocks(d.anchor.network, "address", d.anchor.contract), target: "_blank", rel: "noopener noreferrer", text: `No. ${d.anchor.seq}, ${d.anchor.network}` }) : el("span", { class: "t", text: d.anchor === null ? "Not anchored" : "Unknown" })),
-    el("td", { class: "h", title: d.hash, text: d.hash })));
+    el("td", { class: "h", title: d.hash, text: d.hash }));
+  const rows = [];
+  for (const it of flat.slice(0, logLimit)) {
+    if (it.one) { rows.push(row(it.one)); continue; }
+    const g = it.group, key = g[0].hash, open = opened.has(key);
+    const first = g[g.length - 1], lastD = g[0], assets = [...new Set(g.map((d) => d.asset))].join(" and ");
+    const anchored = g.filter((d) => d.anchor).length;
+    const toggle = () => { open ? opened.delete(key) : opened.add(key); log(); };
+    rows.push(el("tr", { class: "row fold", tabindex: "0", "aria-expanded": String(open), onclick: toggle, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } } },
+      el("td", { class: "t", text: ago(lastD.at, S.at) === ago(first.at, S.at) ? ago(first.at, S.at) : `${ago(lastD.at, S.at)} to ${ago(first.at, S.at)}` }),
+      el("td", { class: "t", text: `${day(first.barTime)}, ${hhmm(first.barTime)} to ${hhmm(lastD.barTime)}` }),
+      el("td", { text: assets }),
+      el("td", {}, el("span", { class: "out hold", text: `${g.length} holds` })),
+      el("td", { text: cap(why[it.reason] || it.reason || "") }),
+      el("td", { class: "t", text: "Not asked" }),
+      el("td", { class: "t", text: `${anchored} of ${g.length} anchored` }),
+      el("td", { class: "t fold-hint", text: open ? "Hide" : "Show each" })));
+    if (open) rows.push(...g.map((d) => row(d, true)));
+  }
   $("#log").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "8", class: "quiet", text: "Nothing in the last 7 days. The log fills at each hourly close." }))]));
+  const more = flat.length - logLimit;
+  $("#log-more").replaceChildren(...(more > 0 ? [el("button", { class: "btn", type: "button", onclick: () => { logLimit += 10; log(); } }, `Show ${Math.min(10, more)} more`), el("span", { text: `${more} older rows` })] : []));
 }
 
 // ---------- decision detail
