@@ -10,10 +10,6 @@ import { INTERVAL_MS, type Candle, type Interval } from "../types.ts";
 export const BINANCE_BASE = "https://data-api.binance.vision";
 export const MARKET_USER_AGENT = "near-sentinel/0.1 (+https://github.com/enzodheilly/near-sentinel)";
 
-/** Chart intervals the dashboard offers (Binance names). */
-export const CHART_INTERVALS = ["15m", "30m", "1h", "4h", "1d", "1w", "1M"] as const;
-export type ChartInterval = (typeof CHART_INTERVALS)[number];
-
 export type BinanceErrorKind = "network" | "timeout" | "rate_limit" | "region" | "http" | "schema";
 
 export class BinanceError extends Error {
@@ -102,17 +98,6 @@ export class BinanceClient {
     if (res.status === 451) throw new BinanceError("region", "HTTP 451: not available from this region", 451);
     if (!res.ok) throw new BinanceError("http", `HTTP ${res.status}: ${text.slice(0, 160)}`, res.status);
     return text;
-  }
-
-  /**
-   * For the dashboard chart only (never for decisions): the latest `limit` candles of `symbol` at any of the usual
-   * chart intervals, the one still forming included, oldest first, as [openTime, open, high, low, close].
-   */
-  async chartCandles(symbol: string, interval: ChartInterval, limit: number): Promise<[number, number, number, number, number][]> {
-    const qs = new URLSearchParams({ symbol, interval, limit: String(Math.min(1000, limit)) });
-    const parsed = rows.safeParse(parseJson(await this.get(`/api/v3/klines?${qs}`)));
-    if (!parsed.success) throw new BinanceError("schema", `unexpected row at ${parsed.error.issues[0]?.path.join(".")}: ${parsed.error.issues[0]?.message}`);
-    return parsed.data.filter(([, o, h, l, c]) => h >= Math.max(o, c) && l <= Math.min(o, c) && l > 0).map(([t, o, h, l, c]) => [t, o, h, l, c]);
   }
 
   /** The latest `limit` candles of `symbol`, closed at `now`, oldest first. */
