@@ -76,6 +76,27 @@ export interface SwapView {
   readonly file: string;
 }
 
+/** How far the last 7 days of decisions got: where each one stopped. */
+export interface FunnelView {
+  readonly days: number;
+  readonly total: number;
+  /** Decisions that stopped at each stage, in order. */
+  readonly stopped: { readonly breakout: number; readonly confirm: number; readonly risk: number; readonly llm: number; readonly policy: number };
+  readonly trades: number;
+  /** Most frequent reasons inside the confirmation and risk stages. */
+  readonly reasons: Readonly<Record<string, number>>;
+}
+
+/** The stage a decision stopped at, from its outcome. */
+export function funnelStage(action: string, reason?: string): keyof FunnelView["stopped"] | "trade" {
+  if (action === "TRADE") return "trade";
+  if (reason === "NO_SIGNAL") return "breakout";
+  if (reason === "INSUFFICIENT_CONFLUENCE" || reason === "VETO_RSI_EXHAUSTION" || reason === "VETO_BTC_REGIME") return "confirm";
+  if (reason === "LLM_VETO") return "llm";
+  if (reason === "POLICY_DENIED") return "policy";
+  return "risk";
+}
+
 export interface DashboardState {
   readonly at: number;
   /** Last NEAR 1h candles from the agent's archive: [openTime, open, high, low, close]. */
@@ -88,6 +109,7 @@ export interface DashboardState {
   readonly prices?: { readonly NEAR?: number; readonly BTC?: number; readonly at: number };
   readonly decisions: readonly DecisionView[];
   readonly swaps: readonly SwapView[];
+  readonly funnel: FunnelView;
   readonly counts: { readonly total: number; readonly trades: number; readonly rejects: number; readonly holds: number };
 }
 
@@ -276,5 +298,18 @@ export async function buildDashboardState(o: BuildOptions): Promise<DashboardSta
     holds: decisions.filter((d) => d.action === "HOLD").length,
   };
   const swaps = await readSwaps(join(o.root, "test", "live", "recorded"));
-  return { at: now, chart, swaps, ...(scan ? { scan } : {}), modes, guardrails, ...(liveWallet ? { liveWallet } : {}), ...(prices ? { prices } : {}), decisions, counts };
+  // the funnel counts every decision of the last 7 days (two assets, hourly: about 340), not just the log's 40
+  const week = (await recentRecords(join(o.root, "records"), 1000)).filter((r) => now - r.rec.inputs.now <= 7 * 86_400_000);
+  const stopped = { breakout: 0, confirm: 0, risk: 0, llm: 0, policy: 0 };
+  const reasons: Record<string, number> = {};
+  let trades = 0;
+  for (const { rec } of week) {
+    const reason = rec.outcome.action === "TRADE" ? undefined : rec.outcome.reason;
+    const st = funnelStage(rec.outcome.action, reason);
+    if (st === "trade") trades++;
+    else stopped[st]++;
+    if (reason && reason !== "NO_SIGNAL") reasons[reason] = (reasons[reason] ?? 0) + 1;
+  }
+  const funnel: FunnelView = { days: 7, total: week.length, stopped, trades, reasons };
+  return { at: now, chart, swaps, funnel, ...(scan ? { scan } : {}), modes, guardrails, ...(liveWallet ? { liveWallet } : {}), ...(prices ? { prices } : {}), decisions, counts };
 }
