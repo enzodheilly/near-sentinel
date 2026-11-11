@@ -5,12 +5,14 @@
  * If anchoring fails, the error propagates out of the engine's `onDecision`, so the trade is never executed
  * (the record stays on disk, unanchored, and the next tick starts over; trades executed earlier in the same
  * step are kept by the runner, see `StepAborted`). A TRADE refused by the contract
- * (paused, daily cap) is refused for the agent too: the contract is the last word.
+ * (paused, daily cap) is refused for the agent too: the contract is the last word. Exits are anchored as EXIT,
+ * which the contract always accepts: a cap or a pause must never keep the agent from cutting a loss.
  *
  * `verify` uses `lookup` to check that a record's hash is on chain with the same kind.
  */
 
-export type AnchorKind = "TRADE" | "REJECT" | "HOLD";
+/** TRADE is a new position (counted, refused while paused); EXIT closes or reduces one (never blocked). */
+export type AnchorKind = "TRADE" | "REJECT" | "HOLD" | "EXIT";
 
 export interface AnchorEntry {
   readonly hash: string;
@@ -52,16 +54,33 @@ export class ContractAnchor implements Anchor {
   private readonly near: NearLike;
   private readonly contractId: string;
   private readonly agentId: string;
-  constructor(o: { near: NearLike; contractId: string; agentId: string }) {
+  private readonly warn: (msg: string) => void;
+  /** The deployed contract predates EXIT: exits are anchored as TRADE (subject to its cap and pause). */
+  legacyExits = false;
+  constructor(o: { near: NearLike; contractId: string; agentId: string; warn?: (msg: string) => void }) {
+    this.warn = o.warn ?? (() => {});
     this.near = o.near;
     this.contractId = o.contractId;
     this.agentId = o.agentId;
   }
   async record(hash: string, kind: AnchorKind): Promise<number> {
+    const send = async (k: AnchorKind) => callResult<number>(await this.near.call<unknown>(this.contractId, "record_decision", { hash, kind: k }, { signerId: this.agentId, gas: "30 Tgas" }));
     try {
-      return callResult<number>(await this.near.call<unknown>(this.contractId, "record_decision", { hash, kind }, { signerId: this.agentId, gas: "30 Tgas" }));
+      if (kind === "EXIT" && this.legacyExits) return await send("TRADE");
+      return await send(kind);
     } catch (e) {
-      throw new AnchorError(hash, e instanceof Error ? e.message : String(e));
+      const m = e instanceof Error ? e.message : String(e);
+      if (kind === "EXIT" && !this.legacyExits && /unknown variant/i.test(m)) {
+        // a contract deployed before EXIT existed: still anchor the exit, as the old contract understands it
+        this.legacyExits = true;
+        this.warn(`ALERT ${this.contractId} predates EXIT: exits are anchored as TRADE, so its daily cap and pause can block a stop. Redeploy the contract (scripts/deploy-guardrail.ts --upgrade).`);
+        try {
+          return await send("TRADE");
+        } catch (e2) {
+          throw new AnchorError(hash, e2 instanceof Error ? e2.message : String(e2));
+        }
+      }
+      throw new AnchorError(hash, m);
     }
   }
   async pause(): Promise<void> {

@@ -3,6 +3,7 @@
  *
  *   node scripts/deploy-guardrail.ts --network testnet --owner <you>.testnet
  *   node scripts/deploy-guardrail.ts --network mainnet --owner <owner> --prefix <name> --yes-mainnet
+ *   ... --upgrade   replaces the code of an existing guardrail, keeping its state (decisions, policy, pause)
  *
  * On testnet the accounts are `agent.<owner>` and `guardrail.<owner>`. On mainnet the owner may be an implicit
  * (64-hex) account, which cannot have sub-accounts (64-character limit), so `--prefix <name>` creates
@@ -81,6 +82,23 @@ async function main(argv: string[]): Promise<number> {
   } catch {
     // no contract yet
   }
+  if (argv.includes("--upgrade")) {
+    if (!initialised) {
+      console.error(`${guardrail}: nothing to upgrade (no initialised guardrail); run without --upgrade first`);
+      return 2;
+    }
+    // new enum variants are appended, so the stored state reads the same: code only, no re-initialisation
+    const before = await near.view<number>(guardrail, "get_decision_count", {});
+    await near.transaction(guardrail).deployContract(guardrail, await readFile(WASM_PATH)).send();
+    const after = await near.view<number>(guardrail, "get_decision_count", {});
+    if (after !== before) {
+      console.error(`${guardrail}: decision count changed across the upgrade (${before} → ${after}); check the contract state`);
+      return 1;
+    }
+    console.log(`${guardrail}: code upgraded, state kept (${after} decisions). Exits are now anchored as EXIT.`);
+    return 0;
+  }
+
   if (!initialised) {
     const wasm = await readFile(WASM_PATH);
     await near

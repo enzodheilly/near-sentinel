@@ -2,7 +2,9 @@
 //!
 //! What it enforces on chain, whatever the agent's software does:
 //! - only the agent account can record decisions;
-//! - a TRADE decision is refused while paused, and beyond `max_trades_per_day` (UTC day of the block);
+//! - a TRADE (a new position) is refused while paused, and beyond `max_trades_per_day` (UTC day of the block);
+//! - an EXIT (closing or reducing a position: stop, target, time stop, kill switch) is always recordable and
+//!   never counted: a cap or a pause must never keep the agent from cutting a loss;
 //! - the agent and the owner can pause (kill switch); only the owner can unpause or change the policy.
 //!
 //! Every decision hash is kept with its kind and block time and announced in a NEP-297 event, so anyone can
@@ -48,9 +50,12 @@ pub struct PolicyUpdate {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum DecisionKind {
+    /// A new position (entry): counted against the daily cap, refused while paused.
     Trade,
     Reject,
     Hold,
+    /// Closing or reducing a position. Added last, so stored entries keep their Borsh tags (no migration).
+    Exit,
 }
 
 #[near(serializers = [borsh])]
@@ -128,7 +133,8 @@ impl Guardrail {
     // ------------------------------------------------------------ agent
 
     /// Records a decision hash (SHA-256 of the record's bytes, 64 lowercase hex) before its trade executes.
-    /// Agent only. A TRADE is refused while paused or beyond the daily trade cap. Returns the sequence number.
+    /// Agent only. A TRADE is refused while paused or beyond the daily trade cap; an EXIT never is.
+    /// Returns the sequence number.
     pub fn record_decision(&mut self, hash: String, kind: DecisionKind) -> u64 {
         require!(env::predecessor_account_id() == self.policy.agent, "only the agent can record decisions");
         require!(valid_hash(&hash), "hash must be 64 lowercase hex characters (SHA-256)");
@@ -332,6 +338,31 @@ mod tests {
         c.record_decision(h(2), DecisionKind::Trade);
         c.record_decision(h(3), DecisionKind::Reject); // refusals are always recordable
         c.record_decision(h(4), DecisionKind::Trade);
+    }
+
+    #[test]
+    fn exits_pass_the_cap_and_the_pause_and_are_not_counted() {
+        let mut c = contract(1);
+        as_(agent(), T0);
+        c.record_decision(h(1), DecisionKind::Trade); // cap reached
+        c.record_decision(h(2), DecisionKind::Exit); // target 1
+        c.pause();
+        c.record_decision(h(3), DecisionKind::Exit); // the stop, while paused
+        assert_eq!(c.get_day_usage().trades, 1);
+        assert_eq!(c.get_decision(h(3)).unwrap().kind, DecisionKind::Exit);
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut c2 = contract(5);
+            as_(agent(), T0);
+            c2.pause();
+            c2.record_decision(h(4), DecisionKind::Trade);
+        }));
+        assert!(refused.is_err(), "a new position is still refused while paused");
+    }
+
+    #[test]
+    fn exit_kind_is_written_as_exit_in_json() {
+        assert_eq!(near_sdk::serde_json::to_string(&DecisionKind::Exit).unwrap(), "\"EXIT\"");
+        assert_eq!(near_sdk::serde_json::to_string(&DecisionKind::Trade).unwrap(), "\"TRADE\"");
     }
 
     #[test]

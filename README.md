@@ -12,7 +12,7 @@ A trading bot usually asks you to trust whoever runs it: that it follows its own
 
 - **Every decision leaves evidence.** It is written as canonical JSON (RFC 8785) and hashed with SHA-256. The hash goes on chain before execution, so a decision cannot be rewritten after the fact.
 - **Decisions are replayable.** `pnpm verify <hash>` recomputes a decision from its recorded inputs and must land on the same bytes.
-- **The limits live on chain.** A NEAR contract holds the policy: which account may act, how many trades per UTC day, and a pause only the owner can lift. The agent's on-chain key can call only `record_decision` and `pause`.
+- **The limits live on chain.** A NEAR contract holds the policy: which account may act, how many new positions per UTC day, and a pause only the owner can lift. Exits are never blocked, so a stop always goes through. The agent's on-chain key can call only `record_decision` and `pause`.
 - **The LLM can only say less.** A model on NEAR AI Cloud reviews a setup only after every deterministic rule passed. It can keep, halve, or refuse the size, never increase it. Its answer is signed inside a TEE, and the signature is stored in the record.
 
 The strategy itself (a Bollinger squeeze breakout confirmed by RSI, an unfilled fair value gap and the Bitcoin trend) is a plain, explainable reference. No alpha is claimed. The trust layer is the product.
@@ -88,8 +88,8 @@ This ships as **Tier 1**: the agent signs its own intents.
 
 | Claim | Enforced by |
 |---|---|
-| Every decision is anchored before it is executed | Agent code. Live mode refuses to start without the guardrail, and the contract rejects a TRADE record while paused or over the daily cap. |
-| No more than N trades per UTC day, and a pause that only the owner can lift | Contract |
+| Every decision is anchored before it is executed | Agent code. Live mode refuses to start without the guardrail, and the contract rejects a new position while paused or over the daily cap. Exits (stops, targets) are always accepted. |
+| No more than N new positions per UTC day, and a pause that only the owner can lift | Contract |
 | The agent's NEAR key cannot move funds, deploy, or change the policy | NEAR access-key permissions |
 | A decision cannot be altered after the fact | SHA-256 hash on chain, plus `pnpm verify` |
 | Size, stop, 1% risk, daily loss, slippage, price sanity | Agent risk engine, not the contract |

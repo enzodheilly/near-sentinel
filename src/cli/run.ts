@@ -376,7 +376,7 @@ async function paperLoop(o: { root: string; env: NodeJS.ProcessEnv; write: (l: s
     ? nearAiVeto(new NearAiClient({ apiKey: key, timeoutMs: cfg.llm.timeoutMs }), cfg)
     : async () => { throw new Error("NEARAI_API_KEY not set"); };
   const executor = await PaperExecutor.open({ cfg, client: oneclick, store: new FileBalanceStore(P.balances) });
-  const anchor = await anchorFromEnv(o.env);
+  const anchor = await anchorFromEnv(o.env, "", o.write);
   o.write(anchor ? `anchoring every decision in ${o.env["NEAR_GUARDRAIL_CONTRACT"]} on ${o.env["NEAR_NETWORK"] ?? "testnet"} before execution` : "no NEAR_AGENT_KEY / NEAR_GUARDRAIL_CONTRACT: decisions are recorded locally only (not anchored)");
   const symbols: Record<TradableAsset, string> = { BTC: cfg.assets.BTC.marketSymbol, NEAR: cfg.assets.NEAR.marketSymbol };
   const runner = await Runner.open({
@@ -410,16 +410,17 @@ async function paperLoop(o: { root: string; env: NodeJS.ProcessEnv; write: (l: s
 }
 
 /** The guardrail anchor from .env (restricted agent key from scripts/setup-agent-key.ts), or undefined. */
-export async function anchorFromEnv(env: NodeJS.ProcessEnv, prefix = ""): Promise<Anchor | undefined> {
+export async function anchorFromEnv(env: NodeJS.ProcessEnv, prefix = "", warn?: (msg: string) => void): Promise<Anchor | undefined> {
   const key = env[`${prefix}NEAR_AGENT_KEY`];
   const agentId = env[`${prefix}NEAR_AGENT_ACCOUNT`];
   const contractId = env[`${prefix}NEAR_GUARDRAIL_CONTRACT`];
   if (!key || !agentId || !contractId) return undefined;
-  const network = (env[`${prefix}NEAR_NETWORK`] ?? "testnet") as "testnet" | "mainnet";
+  // paper anchors on testnet by default, live on mainnet (as the dashboard and the start line say)
+  const network = (env[`${prefix}NEAR_NETWORK`] ?? (prefix === "LIVE_" ? "mainnet" : "testnet")) as "testnet" | "mainnet";
   const { Near } = await import("near-kit");
   const { ContractAnchor } = await import("../execution/anchor.ts");
   const near = new Near({ network, keyStore: { [agentId]: key }, defaultWaitUntil: "FINAL" });
-  return new ContractAnchor({ near: near as never, contractId, agentId });
+  return new ContractAnchor({ near: near as never, contractId, agentId, ...(warn ? { warn } : {}) });
 }
 
 /** Live layout: separate from paper so the two never mix. */
@@ -439,7 +440,7 @@ export async function runLive(o: { root: string; env: NodeJS.ProcessEnv; args: r
     o.write("live needs AGENT_ACCOUNT and AGENT_PRIVATE_KEY in .env (scripts/setup-live-key.ts)");
     return 2;
   }
-  const anchor = await anchorFromEnv(e, "LIVE_");
+  const anchor = await anchorFromEnv(e, "LIVE_", o.write);
   if (!anchor) {
     o.write("live needs the on-chain guardrail on mainnet: LIVE_NEAR_AGENT_ACCOUNT, LIVE_NEAR_GUARDRAIL_CONTRACT, LIVE_NEAR_AGENT_KEY (scripts/deploy-guardrail.ts --network mainnet)");
     return 2;
