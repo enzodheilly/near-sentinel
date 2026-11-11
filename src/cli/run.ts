@@ -187,7 +187,7 @@ export class Runner {
     };
   }
 
-  /** One tick; false when it must be retried (market data unavailable, or the tick aborted before execution). */
+  /** One tick; false when it must be retried (market data unavailable, or the tick stopped). */
   private async tickStep(): Promise<boolean> {
     const now = this.clock();
     let snap: FeedSnapshot;

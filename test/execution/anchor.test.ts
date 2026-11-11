@@ -64,7 +64,7 @@ describe("anchoring", () => {
     expect(r.executed()).toBe(0);
     expect(r.runner.state.portfolio.positions).toEqual([]);
     expect(r.runner.state.lastBarTime).toBeUndefined(); // the bar will be retried
-    expect(r.lines.join("\n")).toMatch(/ALERT tick aborted before execution: anchor .*RPC unreachable/);
+    expect(r.lines.join("\n")).toMatch(/ALERT tick stopped: anchor .*RPC unreachable/);
   });
 
   it("verify: a hash missing on chain, or recorded with another kind, is a problem", async () => {
