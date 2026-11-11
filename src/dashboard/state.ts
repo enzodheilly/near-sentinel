@@ -40,6 +40,11 @@ export interface DecisionView {
   readonly detail: string;
   readonly llm?: string;
   readonly anchor?: { readonly network: string; readonly contract: string; readonly seq: number; readonly at: number } | null;
+  /** What the agent looked at and checked, for the detail panel. */
+  readonly signals: readonly { readonly kind: string; readonly direction: string; readonly strength: number; readonly evidence: Readonly<Record<string, number>> }[];
+  readonly checks: readonly { readonly name: string; readonly ok: boolean; readonly value?: number; readonly limit?: number; readonly detail?: string }[];
+  readonly review?: { readonly model: string; readonly verdict: string; readonly sizeMultiplier: number; readonly rationale: string; readonly fallbackReason?: string; readonly attestation?: string };
+  readonly agentVersion?: string;
 }
 
 /** What the agent looked at on its latest bar, for the scan view. */
@@ -198,6 +203,10 @@ export async function buildDashboardState(o: BuildOptions): Promise<DashboardSta
       hash, at: rec.inputs.now, barTime: rec.barTime, asset: rec.asset, action: o2.action, ...(o2.action !== "TRADE" ? { reason: o2.reason } : {}),
       detail: describeDecision(rec), ...(rec.llm ? { llm: `${rec.llm.verdict} × ${rec.llm.sizeMultiplier}` } : {}),
       ...(anchor !== undefined ? { anchor } : {}),
+      signals: (rec.signals ?? []).map((x) => ({ kind: x.kind, direction: x.direction, strength: x.strength, evidence: x.evidence ?? {} })),
+      checks: (rec.checks ?? []).map((c) => ({ name: c.name, ok: c.ok, ...(c.value !== undefined ? { value: c.value } : {}), ...(c.limit !== undefined ? { limit: c.limit } : {}), ...(c.detail ? { detail: c.detail } : {}) })),
+      ...(rec.llm ? { review: { model: rec.llm.model, verdict: rec.llm.verdict, sizeMultiplier: rec.llm.sizeMultiplier, rationale: rec.llm.rationale, ...(rec.llm.fallbackReason ? { fallbackReason: rec.llm.fallbackReason } : {}), ...(rec.llm.attestation ? { attestation: rec.llm.attestation.status } : {}) } } : {}),
+      ...(rec.agentVersion ? { agentVersion: rec.agentVersion } : {}),
     });
   }
   decisions.sort((a, b) => b.at - a.at);

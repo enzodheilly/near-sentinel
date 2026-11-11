@@ -8,7 +8,10 @@ import { buildDashboardState, type ChainReader } from "../../src/dashboard/state
 const NOW = Date.parse("2026-11-10T21:00:00Z");
 const H = 3_600_000;
 const hold = (barTime: number, now: number, asset = "NEAR") => ({ version: 1, barTime, asset, inputs: { now, candles: [], portfolio: {}, externals: { authenticated: true, calls: [] } }, outcome: { action: "HOLD", reason: "NO_SIGNAL" }, signals: [], checks: [] });
-const reject = (barTime: number, now: number) => ({ ...hold(barTime, now), outcome: { action: "REJECT", reason: "VETO_BTC_REGIME" } });
+const reject = (barTime: number, now: number) => ({ ...hold(barTime, now), outcome: { action: "REJECT", reason: "VETO_BTC_REGIME" },
+  signals: [{ kind: "BTC_REGIME", asset: "NEAR", barTime, direction: "veto", strength: 1, evidence: { btcClose4h: 74_420, ema4h: 76_437 } }],
+  checks: [{ name: "kill_switch", ok: true }, { name: "confirmations", ok: false, value: 1, limit: 2, detail: "RSI_MOMENTUM" }],
+  llm: { model: "m", verdict: "reduce", sizeMultiplier: 0.5, rationale: "thin volume", attestation: { status: "verified", problems: [] } } });
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "dash-"));
@@ -49,6 +52,11 @@ describe("dashboard state", () => {
     expect(s.decisions.map((d) => d.hash[0])).toEqual(["a", "b"]); // newest first; the September replay is left out
     expect(s.decisions[0]!.anchor).toEqual({ network: "testnet", contract: "guardrail.x.testnet", seq: 5, at: NOW - H });
     expect(s.decisions[1]!.anchor).toBeNull();
+    // what the detail panel shows: signals, checks and the LLM review, straight from the record
+    expect(s.decisions[1]!.signals).toEqual([{ kind: "BTC_REGIME", direction: "veto", strength: 1, evidence: { btcClose4h: 74_420, ema4h: 76_437 } }]);
+    expect(s.decisions[1]!.checks[1]).toEqual({ name: "confirmations", ok: false, value: 1, limit: 2, detail: "RSI_MOMENTUM" });
+    expect(s.decisions[1]!.review).toEqual({ model: "m", verdict: "reduce", sizeMultiplier: 0.5, rationale: "thin volume", attestation: "verified" });
+    expect(s.decisions[0]!.review).toBeUndefined();
     expect(s.counts).toEqual({ total: 2, trades: 0, rejects: 1, holds: 1 });
     // anchors are cached: a second build does not ask the chain again for them
     const before = calls.filter((c) => c.endsWith("get_decision")).length;
