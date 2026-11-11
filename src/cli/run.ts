@@ -15,16 +15,16 @@
  * trade (LIVE_MAX_NOTIONAL_USD, default $10).
  */
 
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { RiskConfig } from "../config/schema.ts";
-import { runTick, runWatch, type EngineDeps, type TickMarket } from "../decision/engine.ts";
+import { runTick, runWatch, type Decision, type EngineDeps, type TickMarket } from "../decision/engine.ts";
 import { recorder, type RecordMeta } from "../decision/record.ts";
 import type { ExecutedKeys } from "../execution/idempotency.ts";
 import type { HeartbeatSink } from "../execution/watcher.ts";
 import { anchorHook, type Anchor } from "../execution/anchor.ts";
 import { PriceWatcher } from "../execution/watcher.ts";
 import { INTERVAL_MS, type Executor, type PortfolioSnapshot, type TradableAsset } from "../types.ts";
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { configHash } from "../config/schema.ts";
 import { defaultRiskConfig } from "../config/default.ts";
 import { BinanceClient } from "../data/binance.ts";
@@ -213,6 +213,12 @@ export class Runner {
     this.portfolio = r.portfolio;
     this.lastBarTime = snap.barTime;
     await this.save();
+    const prices: Partial<Record<TradableAsset, number>> = {};
+    for (const a of ["NEAR", "BTC"] as const) {
+      const c = snap.market.candles1h[a].at(-1)?.close;
+      if (c !== undefined) prices[a] = c;
+    }
+    await this.history(now, prices, r.decisions);
     const bar = new Date(snap.barTime).toISOString().slice(0, 16).replace("T", " ");
     for (const [i, d] of r.decisions.entries()) {
       const o = d.outcome;
@@ -231,11 +237,31 @@ export class Runner {
     if (r.decisions.length === 0) return;
     this.portfolio = r.portfolio;
     await this.save();
+    await this.history(at, prices, r.decisions);
     for (const [i, d] of r.decisions.entries()) {
       const o = d.outcome;
       this.write(`watcher ${d.asset} ${o.action === "TRADE" && o.proposal.kind === "EXIT" ? `EXIT ${o.proposal.reason}` : o.action} at ${prices[d.asset]} · record ${hashes[i]?.slice(0, 12) ?? "?"}`);
     }
     for (const a of r.alerts) this.write(`ALERT ${a}`);
+  }
+
+  /**
+   * One line per tick (and per watcher exit) in history.jsonl next to the state file: equity, balances, the prices
+   * they were valued at, and the trades of that step. Read by the dashboard's portfolio tab; never by decisions.
+   */
+  private async history(t: number, prices: Partial<Record<TradableAsset, number>>, decisions: readonly Decision[]): Promise<void> {
+    const trades = decisions.flatMap((d) => {
+      const o = d.outcome;
+      if (o.action !== "TRADE") return [];
+      const p = o.proposal;
+      return [p.kind === "ENTRY" ? { asset: p.asset, kind: "ENTRY", notionalUsd: p.notionalUsd, price: p.referencePrice } : { asset: p.asset, kind: "EXIT", reason: p.reason, fraction: p.fraction, price: p.referencePrice }];
+    });
+    const line = { t, bar: this.lastBarTime, equity: this.portfolio.equityUsd, balances: this.portfolio.balances, prices, ...(trades.length ? { trades } : {}) };
+    try {
+      await appendFile(join(dirname(this.o.statePath), "history.jsonl"), `${JSON.stringify(line)}\n`);
+    } catch (e) {
+      this.write(`history not written (${e instanceof Error ? e.message : String(e)}); trading is unaffected`);
+    }
   }
 
   private async save() {
