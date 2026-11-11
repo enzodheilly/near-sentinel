@@ -27,7 +27,7 @@ a { color: var(--near); text-underline-offset: 3px; }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--near); outline-offset: 2px; }
 .good { color: var(--near); } .warn { color: var(--amber); } .bad { color: var(--fault); }
 
-/* the page is one edge-to-edge grid of cells separated by rules */
+/* edge-to-edge sections separated by rules, read top to bottom: now, market, the two agents, the log */
 .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px var(--pad); border-bottom: 1px solid var(--rule); background: var(--ink); position: sticky; top: 0; z-index: 5; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand img { width: 28px; height: 28px; border-radius: 7px; display: block; }
@@ -59,6 +59,9 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--near); outline-
 .step.pass b { color: var(--text); }
 .step.fail::after { background: var(--amber); border-color: var(--amber); } .step.fail b { color: var(--amber); }
 .step.last::before { right: auto; width: 0; }
+.step.skip { opacity: 0.38; }
+.path-sum { margin: 0 0 14px; font-size: 14px; color: var(--dim); }
+.path-sum b { color: var(--text); font-weight: 500; }
 .stage { position: relative; min-height: clamp(320px, 34vw, 480px); border-left: 1px solid var(--rule); overflow: hidden; }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .stage .fallback { position: absolute; inset: 0; display: none; place-items: center; }
@@ -66,37 +69,38 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--near); outline-
 .stage .tag { position: absolute; left: var(--pad); bottom: 18px; font-size: 13px; color: var(--dim); }
 .stage .tag strong { color: var(--text); font-weight: 500; }
 
-/* gauges */
-.gauges { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-bottom: 1px solid var(--rule); }
-.gauge { padding: 22px var(--pad); border-left: 1px solid var(--rule); min-width: 0; }
-.gauge:first-child { border-left: 0; }
-.gauge span { display: block; font-size: 13px; color: var(--dim); }
-.gauge strong { display: block; font: 600 clamp(26px, 2.6vw, 36px)/1.15 var(--display); font-variant-numeric: tabular-nums; margin-top: 4px; overflow-wrap: anywhere; }
-.gauge small { display: block; font-size: 12.5px; color: var(--faint); margin-top: 2px; overflow-wrap: anywhere; }
-
 /* market */
 .market { border-bottom: 1px solid var(--rule); padding: 22px var(--pad) 14px; }
 .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .head h2 { margin: 0; font: 600 18px/1.2 var(--display); }
 .head span { font-size: 13px; color: var(--dim); }
+.quote { display: flex; align-items: baseline; gap: 14px; margin: -2px 0 14px; }
+.quote strong { font: 600 clamp(28px, 2.8vw, 38px)/1 var(--display); font-variant-numeric: tabular-nums; }
+.quote span { font: 500 15px var(--display); font-variant-numeric: tabular-nums; }
+.quote small { font-size: 13px; color: var(--faint); }
 .chart { position: relative; height: clamp(220px, 22vw, 300px); }
 .chart svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .chart text { font: 11.5px var(--body); fill: var(--faint); }
 
-/* panels row */
-.cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--rule); }
-.cell { padding: 22px var(--pad); border-left: 1px solid var(--rule); min-width: 0; }
-.cell:first-child { border-left: 0; }
-.cell h3 { margin: 0 0 4px; font: 600 17px/1.2 var(--display); display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-.cell h3 a, .cell h3 em { font: 400 13px var(--body); font-style: normal; color: var(--dim); }
-.cell h3 a { color: var(--near); }
-.sub { font-size: 13px; color: var(--dim); margin: 0 0 14px; }
-.pill { display: inline-block; font: 500 12px/1 var(--body); padding: 5px 9px; border: 1px solid var(--rule-2); color: var(--dim); margin-bottom: 14px; }
+/* the two agents, side by side: paper (testnet) and live (mainnet) */
+.agents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--rule); }
+.agent { padding: 26px var(--pad) 28px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.agent + .agent { border-left: 1px solid var(--rule); }
+.agent.live { background: linear-gradient(180deg, rgba(0, 236, 151, 0.035), transparent 60%); }
+.a-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.a-head h2 { margin: 0; font: 600 20px/1.2 var(--display); }
+.a-head p { margin: 3px 0 0; font-size: 13.5px; color: var(--dim); }
+.money strong { display: block; font: 600 clamp(34px, 3.4vw, 48px)/1 var(--display); font-variant-numeric: tabular-nums; }
+.money small { display: block; margin-top: 6px; font-size: 13.5px; color: var(--dim); }
+.block h3 { margin: 0 0 10px; font: 500 13px var(--body); color: var(--faint); display: flex; justify-content: space-between; gap: 10px; }
+.block h3 a { font-weight: 400; }
+.block + .block { padding-top: 18px; border-top: 1px solid var(--rule); }
+.pill { display: inline-block; font: 500 12px/1 var(--body); padding: 6px 10px; border: 1px solid var(--rule-2); color: var(--dim); white-space: nowrap; }
 .pill.on { color: var(--near); border-color: rgba(0, 236, 151, 0.45); } .pill.off { color: var(--fault); border-color: rgba(255, 93, 93, 0.45); }
 dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; margin: 0; font-size: 14px; }
 dt { color: var(--dim); } dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .quiet { color: var(--dim); font-size: 14px; margin: 0; max-width: 46ch; }
-.proofs .facts { margin: 14px 0; }
+.proofs .facts { margin: 0 0 12px; }
 .proofs .rt { margin: 0; font-size: 14px; color: var(--dim); } .proofs .rt strong { color: var(--text); font-weight: 500; }
 .proofs .note { font-size: 12.5px; color: var(--faint); margin: 10px 0 0; }
 
@@ -118,17 +122,23 @@ th:first-child, td:first-child { padding-left: var(--pad); } th:last-child, td:l
 td { padding: 11px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
 tr:hover td { background: var(--deck); }
 td.t { color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
-td.h { color: var(--faint); font-size: 12px; white-space: nowrap; }
-td.h span { display: inline-block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
-.mini { font: 500 11.5px var(--body); color: var(--dim); background: transparent; border: 1px solid var(--rule-2); padding: 2px 7px; margin-left: 8px; cursor: pointer; vertical-align: middle; opacity: 0; }
-tr:hover .mini, .mini:focus-visible, tr:focus-within .mini { opacity: 1; }
-@media (hover: none) { .mini { opacity: 1; } }
 .out { display: inline-flex; align-items: center; gap: 8px; font: 600 13.5px var(--display); white-space: nowrap; }
 .out::before { content: ""; width: 7px; height: 7px; transform: rotate(45deg); background: var(--faint); }
 .out.trade { color: var(--near); } .out.trade::before { background: var(--near); }
 .out.reject { color: var(--amber); } .out.reject::before { background: var(--amber); }
 .out.hold { color: var(--dim); }
 tbody tr.row { cursor: pointer; }
+td .why { color: var(--text); margin-left: 14px; }
+td .ago { color: var(--faint); font-size: 12.5px; margin-left: 10px; }
+.log table { table-layout: fixed; }
+.log th:nth-child(1) { width: 30%; } .log th:nth-child(2) { width: 10%; } .log th:nth-child(3) { width: 36%; } .log th:nth-child(4) { width: 16%; } .log th:nth-child(5) { width: 8%; }
+.log td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) {
+  .log table { table-layout: auto; min-width: 560px; } .log th { width: auto !important; }
+  td .why { display: block; margin: 2px 0 0; white-space: normal; } td .ago { display: block; margin: 0; }
+}
+td.go { color: var(--faint); text-align: right; width: 1%; white-space: nowrap; font-size: 13px; }
+tr.row:hover td.go { color: var(--near); }
 tr.fold td { color: var(--dim); background: rgba(14, 26, 34, 0.5); }
 tr.fold td.fold-hint { color: var(--near); }
 tr.inner td:first-child { box-shadow: inset 3px 0 0 var(--rule-2); }
@@ -168,18 +178,13 @@ dialog.detail[open] { animation: slide 0.22s ease-out; }
 .proof dl { margin-top: 14px; }
 footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; }
 
-@media (max-width: 1100px) {
-  .gauges { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .gauge:nth-child(4) { border-left: 0; } .gauge:nth-child(n+4) { border-top: 1px solid var(--rule); }
-  .cells { grid-template-columns: minmax(0, 1fr); } .cell { border-left: 0; border-top: 1px solid var(--rule); } .cell:first-child { border-top: 0; }
+@media (max-width: 900px) {
+  .agents { grid-template-columns: minmax(0, 1fr); } .agent + .agent { border-left: 0; border-top: 1px solid var(--rule); }
 }
 @media (max-width: 860px) {
   .hero { grid-template-columns: minmax(0, 1fr); }
   .stage { border-left: 0; border-top: 1px solid var(--rule); }
   .rail { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 14px; }
-  .gauges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .gauge { border-left: 0; border-top: 1px solid var(--rule); } .gauge:nth-child(-n+2) { border-top: 0; } .gauge:nth-child(even) { border-left: 1px solid var(--rule); }
-  .gauge:last-child:nth-child(odd) { grid-column: span 2; }
 }
 @media (prefers-reduced-motion: reduce) { .step::after { box-shadow: none !important; } }
 </style>
@@ -201,7 +206,10 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
       <h1 class="verdict" id="verdict">—</h1>
       <p class="because" id="because">Reading the agent's records.</p>
     </div>
-    <ol class="rail" id="rail" aria-label="What the agent checked, in order"></ol>
+    <div class="path">
+      <p class="path-sum" id="path-sum"></p>
+      <ol class="rail" id="rail" aria-label="What the agent checked, in order"></ol>
+    </div>
   </div>
   <div class="stage">
     <canvas id="scene" aria-label="The agent at its desk"></canvas>
@@ -210,25 +218,24 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
   </div>
 </section>
 
-<section class="gauges" id="gauges" aria-label="Key figures"></section>
-
 <section class="market">
   <div class="head"><h2>NEAR / USD <small class="venue">Hyperliquid perp</small></h2><span id="market-sub"></span></div>
+  <div class="quote" id="quote"></div>
   <div class="tools tf" id="tf" role="group" aria-label="Candle interval"></div>
   <div class="chart" id="chart"><svg id="chart-svg" role="img" aria-label="NEAR price chart with the agent's decisions"></svg></div>
 </section>
 
-<section class="cells" id="cells"></section>
+<section class="agents" id="agents" aria-label="The two agents"></section>
 
 <section class="log">
   <div class="head"><h2>Decision log</h2><span id="log-sub"></span></div>
   <div class="tools" id="tools" role="group" aria-label="Filter the log"></div>
   <div class="scroll"><table>
-    <thead><tr><th>Decided</th><th>Bar, UTC</th><th>Asset</th><th>Outcome</th><th>Reason</th><th>LLM</th><th>On chain</th><th>Record</th></tr></thead>
+    <thead><tr><th>Bar, UTC</th><th>Asset</th><th>Decision</th><th>On chain</th><th aria-label="Open"></th></tr></thead>
     <tbody id="log"></tbody>
   </table></div>
   <div class="more" id="log-more"></div>
-  <p class="legend"><b>On chain</b> means the decision's hash was written to the guardrail contract before anything was executed. The live agent always anchors and refuses to trade otherwise; the paper agent anchors when the testnet contract is configured. Anchored or not, every record can be recomputed with pnpm verify.</p>
+  <p class="legend"><b>On chain</b>: the decision's hash was written to the guardrail contract before anything was executed. Anchored or not, every record can be recomputed with pnpm verify.</p>
 </section>
 <dialog class="detail" id="detail" aria-labelledby="d-verdict"></dialog>
 <footer>Local page on 127.0.0.1, refreshed every 15 seconds. No wallet and no keys: nothing here can act. Recompute any record with pnpm verify and its hash.</footer>
@@ -271,12 +278,12 @@ function stepStates(sc) {
   for (const [, , kinds] of STEPS.slice(0, 4)) {
     const s = sig(kinds);
     let st = s ? (s.direction === "veto" || s.direction === "bearish" ? "fail" : "pass") : kinds[0] === "BB_BREAKOUT" ? "fail" : "";
-    if (stopped) st = "";
+    if (stopped) st = "skip";
     if (st === "fail") stopped = true;
     out.push(st);
   }
-  out.push(!stopped && sc.checks.length ? (sc.checks.every((c) => c.ok) ? "pass" : "fail") : "");
-  out.push(sc.llm ? (sc.llm.startsWith("approve") ? "pass" : "fail") : "");
+  out.push(stopped ? "skip" : sc.checks.length ? (sc.checks.every((c) => c.ok) ? "pass" : "fail") : "");
+  out.push(stopped ? "skip" : sc.llm ? (sc.llm.startsWith("approve") ? "pass" : "fail") : "");
   out.push(sc.anchored === true ? "pass" : sc.anchored === false ? "fail" : "");
   return out;
 }
@@ -321,22 +328,11 @@ function hero() {
   document.title = `${paused ? "Paused" : run ? word : "Stopped"}${sc ? `, ${sc.asset} ${hhmm(sc.barTime)} UTC` : ""} | NEAR Sentinel`;
   favicon(paused ? "#ffb547" : run ? "#00ec97" : "#ff5d5d");
   const st = stepStates(sc);
-  $("#rail").replaceChildren(...STEPS.map(([t, s], i) => el("li", { class: `step ${st[i]}${i === STEPS.length - 1 ? " last" : ""}` }, el("b", { text: t }), el("small", { text: s }))));
-}
-
-function gauges() {
-  const paper = S.modes.find((m) => m.mode === "paper");
-  const anchored = S.guardrails.reduce((a, g) => a + (g.decisionCount || 0), 0);
-  const today = S.guardrails.find((g) => g.network === "mainnet" && g.policy) || S.guardrails.find((g) => g.policy);
-  const w = S.liveWallet, px = S.prices || {};
-  const items = [
-    ["NEAR", px.NEAR ? usd(px.NEAR) : "—", px.BTC ? `Bitcoin ${Math.round(px.BTC).toLocaleString("en-US")}` : "", ""],
-    ["Paper portfolio", paper && paper.portfolio ? usd(paper.portfolio.equityUsd) : "—", paper && paper.portfolio ? (paper.portfolio.positions.length ? `${paper.portfolio.positions.map((p) => p.asset).join(" and ")} open` : "All in USDC, simulated fills") : "Not started", ""],
-    ["Live wallet", w ? (w.error ? "Unavailable" : usd(w.usdc + w.near * (px.NEAR || 0) + w.btc * (px.BTC || 0))) : "—", w ? (w.error || "Real funds inside NEAR Intents") : "Not configured", w && w.error ? "bad" : ""],
-    ["Trades today", today ? `${today.dayUsage ? today.dayUsage.trades : 0} of ${today.policy.max_trades_per_day}` : "—", today ? `Cap enforced by the ${today.network} contract` : "Contract not configured", ""],
-    ["Anchored on chain", String(anchored), "Decisions written before acting", anchored ? "good" : ""],
-  ];
-  $("#gauges").replaceChildren(...items.map(([k, v, s, c]) => el("div", { class: "gauge" }, el("span", { text: k }), el("strong", { class: c, text: v }), el("small", { text: s }))));
+  const stop = st.findIndex((x) => x === "fail");
+  $("#path-sum").replaceChildren(...(!sc ? ["Waiting for the first decision."]
+    : stop >= 0 && stop < 6 ? ["Stopped at ", el("b", { text: `step ${stop + 1} of 6, ${STEPS[stop][0].toLowerCase()}` }), ". The decision was still recorded", sc.anchored ? " and anchored on chain." : "."]
+    : ["Passed ", el("b", { text: "all 6 steps" }), sc.anchored ? ", then anchored on chain before acting." : "."]));
+  $("#rail").replaceChildren(...STEPS.map(([t, s], i) => el("li", { class: `step ${st[i]}${i === STEPS.length - 1 ? " last" : ""}` }, el("b", { text: t }), el("small", { text: i === stop && sc && sc.action !== "TRADE" ? cap(why[sc.reason] || s) : s }))));
 }
 
 // ---------- market chart: NEAR perp on Hyperliquid (the market near.com's perps trade on). The local server gives a
@@ -366,6 +362,15 @@ function tfButtons() {
     tf = k; try { localStorage.setItem("tf", k); } catch {}
     K = null; tfButtons(); chart(); loadCandles(); if (ws && ws.readyState === 1) subscribe();
   } }, label)));
+}
+function quote(all) {
+  const q = $("#quote");
+  if (!all.length) { q.replaceChildren(); return; }
+  const last = all[all.length - 1], px = last[4];
+  const ref = all.slice().reverse().find((k) => k[0] <= last[0] - 86_400_000 + 1);
+  const ch = ref && ["15m", "30m", "1h", "4h"].includes(tf) ? (px / ref[4] - 1) * 100 : null;
+  q.replaceChildren(el("strong", { text: `$${px.toFixed(px < 10 ? 4 : 2)}` }),
+    ...(ch == null ? [] : [el("span", { class: ch >= 0 ? "good" : "bad", text: `${ch >= 0 ? "+" : ""}${ch.toFixed(2)} %` }), el("small", { text: "over 24 h" })]));
 }
 // live feed
 let ws = null, wsTf = null, wsRetry = 1000, pingT = 0, liveAt = 0, drawT = 0;
@@ -454,6 +459,7 @@ function chart() {
     add("line", { x1: x(i), x2: x(i), y1: T, y2: H - B, stroke: col, "stroke-opacity": 0.35, "stroke-dasharray": "3 4" });
     add("rect", { x: x(i) - 6, y: y(c[i][2]) - 18, width: 12, height: 12, fill: col, transform: `rotate(45 ${x(i)} ${y(c[i][2]) - 12})` });
   }
+  quote(all);
   const isLive = Date.now() - liveAt < 60_000;
   sub.replaceChildren(...(fallback ? ["Hyperliquid unreachable: the agent's own hourly archive"] : [
     ...(isLive ? [el("span", { class: "livedot", "aria-hidden": "true" }), "Live, "] : []),
@@ -473,57 +479,64 @@ function liveProof(idle) {
   const buy = sw.find((x) => x.side === "buy"), sell = sw.find((x) => x.side === "sell" && buy && x.at > buy.at);
   const cost = buy && sell ? buy.amountIn - sell.amountOut : null;
   return el("div", { class: "proofs" },
-    el("p", { class: "quiet", text: idle ? `Not trading yet. Its own key already signed ${sw.length === 2 ? "two" : sw.length} real swaps through NEAR Intents:` : "Real swaps signed by its key through NEAR Intents:" }),
+    el("p", { class: "quiet", text: idle ? `Not trading yet, but its own key already signed ${sw.length === 2 ? "this round trip" : `${sw.length} swaps`}:` : "Swaps signed by its key:" }),
     el("ul", { class: "facts" }, ...items),
     cost != null ? el("p", { class: "rt" }, "Round trip cost ", el("strong", { text: `${cost.toFixed(2)} USDC` }), `, ${(cost / buy.amountIn * 100).toFixed(2)} % of the amount.`) : null,
     idle ? el("p", { class: "note", text: "Starts trading with pnpm live --yes-real-funds once the owner agrees. Each trade is capped." }) : null);
 }
 
-function cells() {
-  const out = [];
-  for (const m of S.modes.filter((m) => m.mode === "paper" || m.configured || m.portfolio)) {
-    const p = m.portfolio;
-    const pill = m.running ? el("span", { class: "pill on", text: "At work" }) : p ? el("span", { class: "pill off", text: "Stopped" }) : el("span", { class: "pill", text: m.configured ? "Ready, not started" : "Not configured" });
-    const dl = el("dl");
-    const add = (k, v, cls) => dl.append(el("dt", { text: k }), el("dd", { class: cls || "", text: v }));
-    if (m.heartbeat) add("Heartbeat", ago(m.heartbeat.at, S.at) + (m.heartbeat.status !== "ok" ? `, ${m.heartbeat.status}` : ""), m.running ? "" : "warn");
-    if (m.lastBarTime != null) add("Last bar", `${day(m.lastBarTime)}, ${hhmm(m.lastBarTime)} UTC`);
-    if (p) {
-      add("Equity", usd(p.equityUsd));
-      add("Holdings", `${p.balances.USDC.toFixed(2)} USDC, ${Number(p.balances.NEAR.toPrecision(4))} NEAR, ${Number(p.balances.BTC.toPrecision(4))} BTC`);
-      add("Positions", p.positions.length ? p.positions.map((x) => `${x.asset} from ${x.entryPrice.toPrecision(5)}, stop ${x.stopPrice.toPrecision(5)}`).join("; ") : "None");
-      add("Kill switch", p.killSwitch ? "On, owner reset needed" : "Off", p.killSwitch ? "bad" : "");
+// ---------- the two agents: paper (testnet contract) and live (mainnet contract), each with its money and its guardrail
+function agents() {
+  const px = S.prices || {};
+  const guard = (net) => S.guardrails.find((g) => g.network === net);
+  const col = (mode) => {
+    const m = S.modes.find((x) => x.mode === mode) || { mode, configured: false };
+    const live = mode === "live", p = m.portfolio, g = guard(live ? "mainnet" : "testnet");
+    const proven = live && (S.swaps || []).some((x) => x.status === "SUCCESS");
+    const pill = m.running ? el("span", { class: "pill on", text: "At work" })
+      : p && !live ? el("span", { class: "pill off", text: "Stopped" })
+      : live && proven ? el("span", { class: "pill on", text: "Proven on mainnet" })
+      : el("span", { class: "pill", text: m.configured ? "Ready, not started" : "Not configured" });
+
+    // money
+    const w = S.liveWallet;
+    const money = live
+      ? el("div", { class: "money" }, el("strong", { text: w && !w.error ? usd(w.usdc + w.near * (px.NEAR || 0) + w.btc * (px.BTC || 0)) : "—" }),
+          el("small", { text: w ? (w.error ? `Wallet unreadable: ${w.error}` : `Real funds in NEAR Intents: ${w.usdc.toFixed(2)} USDC${w.near > 0.0001 ? `, ${Number(w.near.toPrecision(3))} NEAR` : ""}${w.btc > 0 ? `, ${w.btc} BTC` : ""}`) : "Wallet not configured" }))
+      : el("div", { class: "money" }, el("strong", { text: p ? usd(p.equityUsd) : "—" }),
+          el("small", { text: p ? (p.positions.length ? p.positions.map((x) => `${x.asset} open from ${x.entryPrice.toPrecision(5)}, stop ${x.stopPrice.toPrecision(5)}`).join("; ") : "Simulated money, all in USDC, no position open") : "Starts with pnpm paper" }));
+
+    // activity
+    const act = el("dl");
+    const add = (dl, k, v, cls) => dl.append(el("dt", { text: k }), el("dd", { class: cls || "", text: v }));
+    if (m.heartbeat) add(act, "Heartbeat", ago(m.heartbeat.at, S.at) + (m.heartbeat.status !== "ok" ? `, ${m.heartbeat.status}` : ""), m.running ? "" : "warn");
+    if (m.lastBarTime != null) add(act, "Last bar", `${day(m.lastBarTime)}, ${hhmm(m.lastBarTime)} UTC`);
+    if (p && p.killSwitch) add(act, "Kill switch", "On, owner reset needed", "bad");
+
+    // guardrail
+    const gd = el("dl");
+    if (g) {
+      if (g.policy) {
+        add(gd, "State", g.policy.paused ? "Paused, only the owner resumes" : "Active", g.policy.paused ? "bad" : "good");
+        add(gd, "Trades today", `${g.dayUsage ? g.dayUsage.trades : 0} of ${g.policy.max_trades_per_day}`);
+        if (g.decisionCount != null) add(gd, "Anchored", `${g.decisionCount} decision${g.decisionCount === 1 ? "" : "s"}`);
+      }
+      add(gd, "Contract", g.contract);
+      if (g.error) add(gd, "Read error", g.error, "bad");
     }
-    const proven = m.mode === "live" && (S.swaps || []).some((x) => x.status === "SUCCESS");
-    const livePill = proven && !m.running && !p ? el("span", { class: "pill on", text: "Proven on mainnet" }) : pill;
-    out.push(el("div", { class: "cell" }, el("h3", {}, m.mode === "live" ? "Live agent" : "Paper agent", el("em", { text: m.mode === "live" ? "Real funds" : "Real market, simulated fills" })), livePill,
-      p || m.heartbeat ? dl : m.mode === "live" && proven ? null : el("p", { class: "quiet", text: m.mode === "live" ? "Starts with pnpm live --yes-real-funds once the owner agrees. Each trade is capped." : "Starts with pnpm paper." }),
-      m.mode === "live" && proven ? liveProof(!(p || m.heartbeat)) : null));
-  }
-  for (const g of S.guardrails) {
-    const dl = el("dl");
-    const add = (k, v, cls) => dl.append(el("dt", { text: k }), el("dd", { class: cls || "", text: v }));
-    add("Contract", g.contract);
-    add("Agent", g.agent);
-    if (g.policy) {
-      add("State", g.policy.paused ? "Paused, only the owner resumes" : "Active", g.policy.paused ? "bad" : "good");
-      add("Trades today", `${g.dayUsage ? g.dayUsage.trades : 0} of ${g.policy.max_trades_per_day}`);
-      if (g.decisionCount != null) add("Anchored", `${g.decisionCount} decisions`);
-    }
-    if (g.error) add("Read error", g.error, "bad");
-    out.push(el("div", { class: "cell" }, el("h3", {}, `Guardrail, ${g.network}`, el("a", { href: nearblocks(g.network, "address", g.contract), target: "_blank", rel: "noopener noreferrer", text: "NearBlocks" })),
-      el("p", { class: "sub", text: "The contract the agent cannot overrule" }), dl));
-  }
-  $("#cells").style.gridTemplateColumns = innerWidth > 1100 ? `repeat(${Math.min(out.length, 4)}, minmax(0, 1fr))` : "";
-  $("#cells").replaceChildren(...out);
+    const blocks = [
+      ...(act.children.length ? [el("div", { class: "block" }, el("h3", { text: "Activity" }), act)] : []),
+      el("div", { class: "block" }, el("h3", {}, el("span", { text: `Guardrail contract, ${live ? "mainnet" : "testnet"}` }), g ? el("a", { href: nearblocks(g.network, "address", g.contract), target: "_blank", rel: "noopener noreferrer", text: "NearBlocks" }) : null),
+        g ? gd : el("p", { class: "quiet", text: "Not configured." })),
+      ...(proven ? [el("div", { class: "block" }, el("h3", { text: "Proof of real execution" }), liveProof(!(p || m.heartbeat)))] : []),
+    ];
+    return el("article", { class: "agent" + (live ? " live" : "") },
+      el("div", { class: "a-head" }, el("div", {}, el("h2", { text: live ? "Live agent" : "Paper agent" }), el("p", { text: live ? "Real money, real swaps through NEAR Intents" : "Real market, simulated money" })), pill),
+      money, ...blocks);
+  };
+  $("#agents").replaceChildren(col("paper"), col("live"));
 }
 
-const copyMini = (text) => el("button", { class: "mini", type: "button", "aria-label": "Copy the record hash", onclick: async (e) => {
-  e.stopPropagation();
-  const b = e.currentTarget;
-  try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { b.textContent = "Failed"; }
-  setTimeout(() => (b.textContent = "Copy"), 1400);
-} }, "Copy");
 // why a decision has no on-chain anchor: paper runs anchor only when the testnet contract is configured
 // (live runs always anchor, or refuse to trade); decisions older than the first anchored one came before that
 function unanchored(d) {
@@ -551,14 +564,12 @@ function log() {
   }
   const flat = items.flatMap((it) => it.one ? [it] : it.group.length >= 3 ? [it] : it.group.map((d) => ({ one: d })));
   const row = (d, inner) => el("tr", { class: "row" + (inner ? " inner" : ""), tabindex: "0", "aria-label": `Open the ${d.asset} decision of ${day(d.barTime)} ${hhmm(d.barTime)}`, onclick: (e) => { if (!e.target.closest("a")) openDetail(d); }, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(d); } } },
-    el("td", { class: "t", text: ago(d.at, S.at) }),
-    el("td", { class: "t", text: `${day(d.barTime)}, ${hhmm(d.barTime)}` }),
+    el("td", { class: "t" }, `${day(d.barTime)}, ${hhmm(d.barTime)}`, el("span", { class: "ago", text: ago(d.at, S.at) })),
     el("td", { text: d.asset }),
-    el("td", {}, el("span", { class: "out " + d.action.toLowerCase(), text: d.action === "TRADE" ? "Trade" : d.action === "REJECT" ? "Refused" : "Hold" })),
-    el("td", { text: d.action === "TRADE" ? d.detail : cap(why[d.reason] || d.reason || d.detail) }),
-    el("td", { class: "t", text: d.llm || "Not asked" }),
+    el("td", {}, el("span", { class: "out " + d.action.toLowerCase(), text: d.action === "TRADE" ? "Trade" : d.action === "REJECT" ? "Refused" : "Hold" }),
+      el("span", { class: "why", text: d.action === "TRADE" ? d.detail : cap(why[d.reason] || d.reason || d.detail) })),
     el("td", {}, d.anchor ? el("a", { href: nearblocks(d.anchor.network, "address", d.anchor.contract), target: "_blank", rel: "noopener noreferrer", text: `No. ${d.anchor.seq}, ${d.anchor.network}` }) : el("span", { class: "t", title: unanchored(d)[1], text: unanchored(d)[0] })),
-    el("td", { class: "h" }, el("span", { title: d.hash, text: d.hash }), copyMini(d.hash)));
+    el("td", { class: "go", "aria-hidden": "true", text: "Details" }));
   const rows = [];
   for (const it of flat.slice(0, logLimit)) {
     if (it.one) { rows.push(row(it.one)); continue; }
@@ -567,17 +578,14 @@ function log() {
     const anchored = g.filter((d) => d.anchor).length;
     const toggle = () => { open ? opened.delete(key) : opened.add(key); log(); };
     rows.push(el("tr", { class: "row fold", tabindex: "0", "aria-expanded": String(open), onclick: toggle, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } } },
-      el("td", { class: "t", text: ago(lastD.at, S.at) === ago(first.at, S.at) ? ago(first.at, S.at) : `${ago(lastD.at, S.at)} to ${ago(first.at, S.at)}` }),
-      el("td", { class: "t", text: `${day(first.barTime)}, ${hhmm(first.barTime)} to ${hhmm(lastD.barTime)}` }),
+      el("td", { class: "t" }, `${day(first.barTime)}, ${hhmm(first.barTime)} to ${hhmm(lastD.barTime)}`, el("span", { class: "ago", text: ago(first.at, S.at) })),
       el("td", { text: assets }),
-      el("td", {}, el("span", { class: "out hold", text: `${g.length} holds` })),
-      el("td", { text: cap(why[it.reason] || it.reason || "") }),
-      el("td", { class: "t", text: "Not asked" }),
+      el("td", {}, el("span", { class: "out hold", text: `${g.length} holds` }), el("span", { class: "why", text: cap(why[it.reason] || it.reason || "") })),
       el("td", { class: "t", text: `${anchored} of ${g.length} anchored` }),
-      el("td", { class: "t fold-hint", text: open ? "Hide" : "Show each" })));
+      el("td", { class: "go fold-hint", text: open ? "Hide" : "Show each" })));
     if (open) rows.push(...g.map((d) => row(d, true)));
   }
-  $("#log").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "8", class: "quiet", text: "Nothing in the last 7 days. The log fills at each hourly close." }))]));
+  $("#log").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "5", class: "quiet", text: "Nothing in the last 7 days. The log fills at each hourly close." }))]));
   const more = flat.length - logLimit;
   $("#log-more").replaceChildren(...(more > 0 ? [el("button", { class: "btn", type: "button", onclick: () => { logLimit += 10; log(); } }, `Show ${Math.min(10, more)} more`), el("span", { text: `${more} older rows` })] : []));
 }
@@ -661,7 +669,7 @@ function openDetail(d) {
 }
 $("#detail").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }); // click on the backdrop
 
-function render() { hero(); gauges(); chart(); cells(); log(); }
+function render() { hero(); chart(); agents(); log(); }
 async function refresh() {
   try {
     const r = await fetch("/api/state", { cache: "no-store" });
@@ -676,7 +684,7 @@ const tick = () => { $("#clock").textContent = new Date().toISOString().slice(11
 tick(); setInterval(tick, 10000);
 refresh(); setInterval(refresh, 15000);
 loadCandles(); setInterval(loadCandles, 30000); live();
-let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(() => S && (chart(), cells()), 100); }).observe(document.body);
+let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(() => S && chart(), 100); }).observe(document.body);
 </script>
 
 
