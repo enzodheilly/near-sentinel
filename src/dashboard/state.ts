@@ -4,7 +4,7 @@
  * the live agent's NEAR Intents balances, each recent decision's anchor). Nothing here writes or signs.
  */
 
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { heartbeatAlert, readHeartbeat, type Heartbeat } from "../execution/watcher.ts";
 import type { DecisionRecord, PortfolioSnapshot } from "../types.ts";
@@ -147,22 +147,28 @@ export function describeDecision(r: DecisionRecord): string {
   return o.reason;
 }
 
-/** The `limit` most recent records (by file time), newest first. */
-async function recentRecords(dir: string, limit: number): Promise<{ hash: string; rec: DecisionRecord; mtime: number }[]> {
+// records are content-addressed (the file name is their hash): once parsed, a file never needs reading again
+const recordCache = new Map<string, DecisionRecord | null>();
+
+/**
+ * The `limit` most recent records by decision time, newest first. Not by file time: `pnpm demo` writes hundreds of
+ * replayed decisions dated months back, and they must not push the agent's own out of view.
+ */
+async function recentRecords(dir: string, limit: number): Promise<{ hash: string; rec: DecisionRecord }[]> {
   let files: string[] = [];
   try {
     files = (await readdir(dir)).filter((f) => /^[0-9a-f]{64}\.json$/.test(f));
   } catch {
     return [];
   }
-  const withTime = await Promise.all(files.map(async (f) => ({ f, mtime: (await stat(join(dir, f))).mtimeMs })));
-  withTime.sort((a, b) => b.mtime - a.mtime);
-  const out = [];
-  for (const { f, mtime } of withTime.slice(0, limit)) {
-    const rec = await readJson<DecisionRecord>(join(dir, f));
-    if (rec) out.push({ hash: f.slice(0, 64), rec, mtime });
+  const out: { hash: string; rec: DecisionRecord }[] = [];
+  for (const f of files) {
+    const p = join(dir, f);
+    if (!recordCache.has(p)) recordCache.set(p, (await readJson<DecisionRecord>(p)) ?? null);
+    const rec = recordCache.get(p);
+    if (rec) out.push({ hash: f.slice(0, 64), rec });
   }
-  return out;
+  return out.sort((a, b) => b.rec.inputs.now - a.rec.inputs.now).slice(0, limit);
 }
 
 /** Swap evidence written by scripts/swap-once.ts (one file per swap), oldest first. */
