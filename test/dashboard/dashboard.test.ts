@@ -85,6 +85,7 @@ describe("dashboard server", () => {
     const page = await fetch(url);
     expect(page.status).toBe(200);
     expect(page.headers.get("content-security-policy")).toMatch(/default-src 'none'/);
+    expect(page.headers.get("content-security-policy")).toMatch(/connect-src 'self' wss:\/\/api\.hyperliquid\.xyz\/ws;/); // the only outside address: live prices
     expect(await page.text()).toMatch(/NEAR Sentinel/);
     const st = (await (await fetch(`${url}/api/state`)).json()) as { counts: { total: number } };
     expect(st.counts.total).toBe(2);

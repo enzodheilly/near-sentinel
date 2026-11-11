@@ -4,7 +4,9 @@
  * - Listens on 127.0.0.1 only; GET only (anything else is 405); no wallet, no keys used, no action.
  * - /api/state is rebuilt at most every 10 s (files + a few on-chain views); anchors are cached per hash.
  * - The page refreshes itself every 15 s.
- * - /api/candles?tf= serves the NEAR chart at the interval the viewer picks (Binance public data, cached 30 s).
+ * - /api/candles?tf= serves the NEAR chart at the interval the viewer picks (Hyperliquid NEAR perp, cached 30 s);
+ *   the page then follows the forming candle live over Hyperliquid's public WebSocket (the one outside address the
+ *   CSP allows, for reading prices only).
  */
 
 import { readFile } from "node:fs/promises";
@@ -12,7 +14,7 @@ import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BinanceClient, CHART_INTERVALS, type ChartInterval } from "../data/binance.ts";
+import { CHART_INTERVALS, hyperliquidCandles, HYPERLIQUID_WS, type ChartCandle, type ChartInterval } from "../data/hyperliquid.ts";
 import { buildDashboardState, type ChainReader, type DashboardState, type DecisionView } from "./state.ts";
 
 export function nearKitReader(): ChainReader {
@@ -47,8 +49,8 @@ export interface DashboardServerOptions {
   readonly chain?: ChainReader;
   readonly clock?: () => number;
   readonly cacheMs?: number;
-  /** Chart candles (Binance by default; tests inject a fake). */
-  readonly candles?: (interval: ChartInterval) => Promise<[number, number, number, number, number][]>;
+  /** Chart candles (Hyperliquid NEAR perp by default; tests inject a fake). */
+  readonly candles?: (interval: ChartInterval) => Promise<ChartCandle[]>;
 }
 
 export async function startDashboard(o: DashboardServerOptions): Promise<{ server: Server; url: string }> {
@@ -72,7 +74,7 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
   };
 
   // chart candles per interval, cached 30 s (the page asks every 15 s)
-  const candleSource = o.candles ?? ((iv: ChartInterval) => new BinanceClient({ timeoutMs: 10_000 }).chartCandles("NEARUSDT", iv, 90));
+  const candleSource = o.candles ?? ((iv: ChartInterval) => hyperliquidCandles("NEAR", iv, 90, Date.now()));
   const candleCache = new Map<string, { at: number; body: string }>();
   const candles = async (iv: ChartInterval): Promise<string> => {
     const now = clock(), hit = candleCache.get(iv);
@@ -86,7 +88,7 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
     const headers = {
       "x-content-type-options": "nosniff",
       "referrer-policy": "no-referrer",
-      "content-security-policy": "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'",
+      "content-security-policy": `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' ${HYPERLIQUID_WS}; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'`,
     };
     if (req.method !== "GET") {
       res.writeHead(405, { ...headers, allow: "GET" }).end("read-only");

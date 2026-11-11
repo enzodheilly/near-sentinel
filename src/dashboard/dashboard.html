@@ -104,6 +104,10 @@ dt { color: var(--dim); } dd { margin: 0; overflow-wrap: anywhere; font-variant-
 .log { padding: 22px var(--pad) 8px; }
 .tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .tools button { font: 500 13px var(--body); color: var(--dim); background: transparent; border: 1px solid var(--rule-2); padding: 6px 12px; cursor: pointer; }
+.venue { font: 500 13px var(--body); color: var(--faint); margin-left: 8px; }
+.livedot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--near); margin-right: 7px; vertical-align: 1px; box-shadow: 0 0 0 0 rgba(0, 236, 151, 0.6); animation: beat 2s infinite; }
+@keyframes beat { 70% { box-shadow: 0 0 0 7px rgba(0, 236, 151, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 236, 151, 0); } }
+@media (prefers-reduced-motion: reduce) { .livedot { animation: none; } }
 .tf { margin: 0 0 12px; } .tf button { padding: 5px 11px; min-width: 44px; }
 @media (max-width: 520px) { .tf { gap: 4px; flex-wrap: nowrap; } .tf button { padding: 5px 0; min-width: 0; flex: 1; } }
 .tools button[aria-pressed="true"] { color: var(--ink); background: var(--near); border-color: var(--near); }
@@ -209,7 +213,7 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
 <section class="gauges" id="gauges" aria-label="Key figures"></section>
 
 <section class="market">
-  <div class="head"><h2>NEAR / USDT</h2><span id="market-sub"></span></div>
+  <div class="head"><h2>NEAR / USD <small class="venue">Hyperliquid perp</small></h2><span id="market-sub"></span></div>
   <div class="tools tf" id="tf" role="group" aria-label="Candle interval"></div>
   <div class="chart" id="chart"><svg id="chart-svg" role="img" aria-label="NEAR price chart with the agent's decisions"></svg></div>
 </section>
@@ -335,7 +339,8 @@ function gauges() {
   $("#gauges").replaceChildren(...items.map(([k, v, s, c]) => el("div", { class: "gauge" }, el("span", { text: k }), el("strong", { class: c, text: v }), el("small", { text: s }))));
 }
 
-// ---------- market chart: the viewer picks the candle interval (Binance data via the local server)
+// ---------- market chart: NEAR perp on Hyperliquid (the market near.com's perps trade on). The local server gives a
+// snapshot at the picked interval; the forming candle then moves live over Hyperliquid's public WebSocket.
 const TF = [["15m", "15m"], ["30m", "30m"], ["1h", "1h"], ["4h", "4h"], ["1d", "1D"], ["1w", "1W"], ["1M", "1M"]];
 const TF_NAME = { "15m": "15-minute", "30m": "30-minute", "1h": "Hourly", "4h": "4-hour", "1d": "Daily", "1w": "Weekly", "1M": "Monthly" };
 let tf = "1h"; try { tf = localStorage.getItem("tf") || "1h"; } catch {}
@@ -347,15 +352,49 @@ async function loadCandles() {
     const r = await fetch(`/api/candles?tf=${want}`, { cache: "no-store" });
     if (!r.ok) throw new Error(String(r.status));
     const j = await r.json();
-    if (want === tf) { K = j.candles; kErr = false; chart(); }
+    if (want !== tf) return;
+    // the snapshot can be up to 30 s old: keep the live candle when it is newer
+    const prev = K && K[K.length - 1], fresh = Date.now() - liveAt < 60_000;
+    K = j.candles; kErr = false;
+    const l = K[K.length - 1];
+    if (prev && fresh && l) { if (l[0] === prev[0]) K[K.length - 1] = prev; else if (prev[0] > l[0]) K.push(prev); }
+    chart();
   } catch { if (want === tf) { K = null; kErr = true; chart(); } }
 }
 function tfButtons() {
   $("#tf").replaceChildren(...TF.map(([k, label]) => el("button", { type: "button", "aria-pressed": String(tf === k), "aria-label": `${TF_NAME[k]} candles`, onclick: () => {
     tf = k; try { localStorage.setItem("tf", k); } catch {}
-    K = null; tfButtons(); chart(); loadCandles();
+    K = null; tfButtons(); chart(); loadCandles(); if (ws && ws.readyState === 1) subscribe();
   } }, label)));
 }
+// live feed
+let ws = null, wsTf = null, wsRetry = 1000, pingT = 0, liveAt = 0, drawT = 0;
+function live() {
+  if (ws && ws.readyState <= 1) return;
+  try { ws = new WebSocket("wss://api.hyperliquid.xyz/ws"); } catch { return; }
+  ws.onopen = () => {
+    wsRetry = 1000; wsTf = null; subscribe();
+    clearInterval(pingT); pingT = setInterval(() => ws.readyState === 1 && ws.send('{"method":"ping"}'), 30_000); // idle connections are closed after 60 s
+  };
+  ws.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    const k = m.channel === "candle" && m.data;
+    if (!k || k.s !== "NEAR" || k.i !== tf || !K) return;
+    const c = [k.t, +k.o, +k.h, +k.l, +k.c];
+    if (!(c[2] >= Math.max(c[1], c[4]) && c[3] <= Math.min(c[1], c[4]) && c[3] > 0)) return;
+    const last = K[K.length - 1];
+    if (last && last[0] === c[0]) K[K.length - 1] = c; else if (!last || c[0] > last[0]) K.push(c); else return;
+    liveAt = Date.now();
+    if (!drawT) drawT = setTimeout(() => { drawT = 0; chart(); }, 250); // at most 4 redraws a second
+  };
+  ws.onclose = () => { clearInterval(pingT); setTimeout(live, wsRetry); wsRetry = Math.min(30_000, wsRetry * 2); };
+}
+function subscribe() {
+  if (wsTf) ws.send(JSON.stringify({ method: "unsubscribe", subscription: { type: "candle", coin: "NEAR", interval: wsTf } }));
+  ws.send(JSON.stringify({ method: "subscribe", subscription: { type: "candle", coin: "NEAR", interval: tf } }));
+  wsTf = tf;
+}
+
 function chart() {
   const svg = $("#chart-svg"), box = $("#chart");
   const W = Math.max(280, box.clientWidth), H = Math.max(180, box.clientHeight);
@@ -363,14 +402,14 @@ function chart() {
   svg.replaceChildren();
   const NS = "http://www.w3.org/2000/svg";
   const add = (tag, a) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(a)) n.setAttribute(k, v); svg.append(n); return n; };
-  // Binance unreachable: the agent's own hourly archive still shows
+  // Hyperliquid unreachable: the agent's own hourly archive still shows
   const fallback = kErr && tf === "1h" && S && S.chart && S.chart.length;
   const all = K || (fallback ? S.chart : []);
   const c = all.slice(-Math.max(20, Math.floor((W - 58) / 7))); // no thinner than ~7 px per candle
   const sub = $("#market-sub");
   if (!c.length) {
     sub.textContent = "";
-    add("text", { x: 0, y: 20 }).textContent = kErr ? "Binance market data is unreachable from here right now." : "Loading candles…";
+    add("text", { x: 0, y: 20 }).textContent = kErr ? "Hyperliquid market data is unreachable from here right now." : "Loading candles…";
     return;
   }
   const R = 58, B = 24, T = 10;
@@ -415,7 +454,10 @@ function chart() {
     add("line", { x1: x(i), x2: x(i), y1: T, y2: H - B, stroke: col, "stroke-opacity": 0.35, "stroke-dasharray": "3 4" });
     add("rect", { x: x(i) - 6, y: y(c[i][2]) - 18, width: 12, height: 12, fill: col, transform: `rotate(45 ${x(i)} ${y(c[i][2]) - 12})` });
   }
-  sub.textContent = fallback ? "Binance unreachable: the agent's own hourly archive" : `${TF_NAME[tf]} candles from Binance, the current one still forming${marks ? ". Amber marks: setups the agent refused" : ""}`;
+  const isLive = Date.now() - liveAt < 60_000;
+  sub.replaceChildren(...(fallback ? ["Hyperliquid unreachable: the agent's own hourly archive"] : [
+    ...(isLive ? [el("span", { class: "livedot", "aria-hidden": "true" }), "Live, "] : []),
+    `${isLive ? TF_NAME[tf].toLowerCase() : TF_NAME[tf]} candles${isLive ? "" : ", refreshed every 30 s"}${marks ? ". Amber marks: setups the agent refused" : ""}`]));
 }
 tfButtons();
 
@@ -633,7 +675,7 @@ async function refresh() {
 const tick = () => { $("#clock").textContent = new Date().toISOString().slice(11, 16); };
 tick(); setInterval(tick, 10000);
 refresh(); setInterval(refresh, 15000);
-loadCandles(); setInterval(loadCandles, 15000);
+loadCandles(); setInterval(loadCandles, 30000); live();
 let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(() => S && (chart(), cells()), 100); }).observe(document.body);
 </script>
 
