@@ -15,6 +15,8 @@ import { createServer, type Server } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CHART_INTERVALS, hyperliquidCandles, HYPERLIQUID_WS, type ChartCandle, type ChartInterval } from "../data/hyperliquid.ts";
+import { defaultRiskConfig } from "../config/default.ts";
+import { buildPortfolio, type PortfolioMode } from "./portfolio.ts";
 import { buildDashboardState, type ChainReader, type DashboardState, type DecisionView } from "./state.ts";
 
 export function nearKitReader(): ChainReader {
@@ -84,6 +86,16 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
     return body;
   };
 
+  // the portfolio tab, per agent, cached 30 s
+  const pfCache = new Map<string, { at: number; body: string }>();
+  const portfolio = async (m: PortfolioMode): Promise<string> => {
+    const now = clock(), hit = pfCache.get(m);
+    if (hit && now - hit.at < 30_000) return hit.body;
+    const body = JSON.stringify(await buildPortfolio(o.root, m, defaultRiskConfig));
+    pfCache.set(m, { at: now, body });
+    return body;
+  };
+
   const server = createServer((req, res) => {
     const headers = {
       "x-content-type-options": "nosniff",
@@ -99,6 +111,16 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
       res.writeHead(200, { ...headers, "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }).end(page);
     } else if (path === "/api/state") {
       state().then(
+        (body) => res.writeHead(200, { ...headers, "content-type": "application/json", "cache-control": "no-store" }).end(body),
+        (e) => res.writeHead(500, { ...headers, "content-type": "application/json" }).end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) })),
+      );
+    } else if (path === "/api/portfolio") {
+      const m = new URLSearchParams((req.url ?? "").split("?")[1] ?? "").get("mode") ?? "paper";
+      if (m !== "paper" && m !== "live" && m !== "demo") {
+        res.writeHead(400, { ...headers, "content-type": "application/json" }).end(JSON.stringify({ error: "unknown mode" }));
+        return;
+      }
+      portfolio(m).then(
         (body) => res.writeHead(200, { ...headers, "content-type": "application/json", "cache-control": "no-store" }).end(body),
         (e) => res.writeHead(500, { ...headers, "content-type": "application/json" }).end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) })),
       );

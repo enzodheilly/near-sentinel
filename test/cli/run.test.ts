@@ -66,6 +66,13 @@ describe("Runner", () => {
     expect(runner.state.portfolio.positions.map((p) => p.asset)).toEqual(["NEAR"]);
     expect(beats.length).toBeGreaterThanOrEqual(3 * 60); // the watcher polled every minute in between
     expect(beats.every((b) => b.status === "ok")).toBe(true);
+
+    // portfolio history for the dashboard: one line per bar, the entry among them, valued at the bar's closes
+    const { dir } = await Promise.resolve({ dir: opts.statePath.replace(/\/state\.json$/, "") });
+    const hist = (await readFile(join(dir, "history.jsonl"), "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+    expect(hist.length).toBeGreaterThanOrEqual(4);
+    expect(hist.every((h) => h.prices.NEAR > 0 && h.prices.BTC > 0 && h.equity > 0)).toBe(true);
+    expect(hist.flatMap((h) => h.trades ?? []).map((x) => [x.asset, x.kind])).toContainEqual(["NEAR", "ENTRY"]);
   });
 
   it("a restart resumes the saved state and never re-ticks a bar", async () => {
