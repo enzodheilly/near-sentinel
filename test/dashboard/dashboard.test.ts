@@ -108,3 +108,27 @@ describe("live proof", () => {
     expect(await readSwaps("/nonexistent")).toEqual([]);
   });
 });
+
+describe("chart candles", () => {
+  it("serves the picked interval, refuses unknown ones, and reports a data outage as 502", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dash-c-"));
+    const asked: string[] = [];
+    let fail = false;
+    const { server, url } = await startDashboard({
+      root, env: {}, port: 0, clock: () => NOW,
+      candles: async (iv) => { asked.push(iv); if (fail) throw new Error("down"); return [[NOW - H, 3.5, 3.6, 3.4, 3.55]]; },
+    });
+    try {
+      const r = await fetch(`${url}/api/candles?tf=15m`);
+      expect(r.status).toBe(200);
+      expect(await r.json()).toEqual({ interval: "15m", candles: [[NOW - H, 3.5, 3.6, 3.4, 3.55]] });
+      await fetch(`${url}/api/candles?tf=15m`); // cached 30 s
+      expect(asked).toEqual(["15m"]);
+      expect((await fetch(`${url}/api/candles?tf=2m`)).status).toBe(400);
+      fail = true;
+      expect((await fetch(`${url}/api/candles?tf=1w`)).status).toBe(502);
+    } finally {
+      server.close();
+    }
+  });
+});

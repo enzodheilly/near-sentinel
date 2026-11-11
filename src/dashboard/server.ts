@@ -4,6 +4,7 @@
  * - Listens on 127.0.0.1 only; GET only (anything else is 405); no wallet, no keys used, no action.
  * - /api/state is rebuilt at most every 10 s (files + a few on-chain views); anchors are cached per hash.
  * - The page refreshes itself every 15 s.
+ * - /api/candles?tf= serves the NEAR chart at the interval the viewer picks (Binance public data, cached 30 s).
  */
 
 import { readFile } from "node:fs/promises";
@@ -11,6 +12,7 @@ import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BinanceClient, CHART_INTERVALS, type ChartInterval } from "../data/binance.ts";
 import { buildDashboardState, type ChainReader, type DashboardState, type DecisionView } from "./state.ts";
 
 export function nearKitReader(): ChainReader {
@@ -45,6 +47,8 @@ export interface DashboardServerOptions {
   readonly chain?: ChainReader;
   readonly clock?: () => number;
   readonly cacheMs?: number;
+  /** Chart candles (Binance by default; tests inject a fake). */
+  readonly candles?: (interval: ChartInterval) => Promise<[number, number, number, number, number][]>;
 }
 
 export async function startDashboard(o: DashboardServerOptions): Promise<{ server: Server; url: string }> {
@@ -67,6 +71,17 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
     return building;
   };
 
+  // chart candles per interval, cached 30 s (the page asks every 15 s)
+  const candleSource = o.candles ?? ((iv: ChartInterval) => new BinanceClient({ timeoutMs: 10_000 }).chartCandles("NEARUSDT", iv, 90));
+  const candleCache = new Map<string, { at: number; body: string }>();
+  const candles = async (iv: ChartInterval): Promise<string> => {
+    const now = clock(), hit = candleCache.get(iv);
+    if (hit && now - hit.at < 30_000) return hit.body;
+    const body = JSON.stringify({ interval: iv, candles: await candleSource(iv) });
+    candleCache.set(iv, { at: now, body });
+    return body;
+  };
+
   const server = createServer((req, res) => {
     const headers = {
       "x-content-type-options": "nosniff",
@@ -84,6 +99,16 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
       state().then(
         (body) => res.writeHead(200, { ...headers, "content-type": "application/json", "cache-control": "no-store" }).end(body),
         (e) => res.writeHead(500, { ...headers, "content-type": "application/json" }).end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) })),
+      );
+    } else if (path === "/api/candles") {
+      const iv = new URLSearchParams((req.url ?? "").split("?")[1] ?? "").get("tf") ?? "1h";
+      if (!(CHART_INTERVALS as readonly string[]).includes(iv)) {
+        res.writeHead(400, { ...headers, "content-type": "application/json" }).end(JSON.stringify({ error: "unknown interval" }));
+        return;
+      }
+      candles(iv as ChartInterval).then(
+        (body) => res.writeHead(200, { ...headers, "content-type": "application/json", "cache-control": "no-store" }).end(body),
+        (e) => res.writeHead(502, { ...headers, "content-type": "application/json" }).end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) })),
       );
     } else if (path && Object.hasOwn(STATIC, path)) {
       const f = STATIC[path]!;

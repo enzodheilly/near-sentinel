@@ -104,6 +104,8 @@ dt { color: var(--dim); } dd { margin: 0; overflow-wrap: anywhere; font-variant-
 .log { padding: 22px var(--pad) 8px; }
 .tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .tools button { font: 500 13px var(--body); color: var(--dim); background: transparent; border: 1px solid var(--rule-2); padding: 6px 12px; cursor: pointer; }
+.tf { margin: 0 0 12px; } .tf button { padding: 5px 11px; min-width: 44px; }
+@media (max-width: 520px) { .tf { gap: 4px; flex-wrap: nowrap; } .tf button { padding: 5px 0; min-width: 0; flex: 1; } }
 .tools button[aria-pressed="true"] { color: var(--ink); background: var(--near); border-color: var(--near); }
 .scroll { overflow-x: auto; margin: 10px calc(var(--pad) * -1) 0; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -207,8 +209,9 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
 <section class="gauges" id="gauges" aria-label="Key figures"></section>
 
 <section class="market">
-  <div class="head"><h2>NEAR, last 48 hours</h2><span id="market-sub">Hourly candles the agent archived</span></div>
-  <div class="chart" id="chart"><svg id="chart-svg" role="img" aria-label="NEAR price over the last 48 hours with the agent's decisions"></svg></div>
+  <div class="head"><h2>NEAR / USDT</h2><span id="market-sub"></span></div>
+  <div class="tools tf" id="tf" role="group" aria-label="Candle interval"></div>
+  <div class="chart" id="chart"><svg id="chart-svg" role="img" aria-label="NEAR price chart with the agent's decisions"></svg></div>
 </section>
 
 <section class="cells" id="cells"></section>
@@ -332,6 +335,27 @@ function gauges() {
   $("#gauges").replaceChildren(...items.map(([k, v, s, c]) => el("div", { class: "gauge" }, el("span", { text: k }), el("strong", { class: c, text: v }), el("small", { text: s }))));
 }
 
+// ---------- market chart: the viewer picks the candle interval (Binance data via the local server)
+const TF = [["15m", "15m"], ["30m", "30m"], ["1h", "1h"], ["4h", "4h"], ["1d", "1D"], ["1w", "1W"], ["1M", "1M"]];
+const TF_NAME = { "15m": "15-minute", "30m": "30-minute", "1h": "Hourly", "4h": "4-hour", "1d": "Daily", "1w": "Weekly", "1M": "Monthly" };
+let tf = "1h"; try { tf = localStorage.getItem("tf") || "1h"; } catch {}
+if (!TF.some(([k]) => k === tf)) tf = "1h";
+let K = null, kErr = false;
+async function loadCandles() {
+  const want = tf;
+  try {
+    const r = await fetch(`/api/candles?tf=${want}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(String(r.status));
+    const j = await r.json();
+    if (want === tf) { K = j.candles; kErr = false; chart(); }
+  } catch { if (want === tf) { K = null; kErr = true; chart(); } }
+}
+function tfButtons() {
+  $("#tf").replaceChildren(...TF.map(([k, label]) => el("button", { type: "button", "aria-pressed": String(tf === k), "aria-label": `${TF_NAME[k]} candles`, onclick: () => {
+    tf = k; try { localStorage.setItem("tf", k); } catch {}
+    K = null; tfButtons(); chart(); loadCandles();
+  } }, label)));
+}
 function chart() {
   const svg = $("#chart-svg"), box = $("#chart");
   const W = Math.max(280, box.clientWidth), H = Math.max(180, box.clientHeight);
@@ -339,41 +363,61 @@ function chart() {
   svg.replaceChildren();
   const NS = "http://www.w3.org/2000/svg";
   const add = (tag, a) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(a)) n.setAttribute(k, v); svg.append(n); return n; };
-  const c = S.chart || [];
-  if (!c.length) { add("text", { x: 0, y: 20 }).textContent = "Candles appear once the agent has run."; return; }
-  const R = 52, B = 24, T = 10;
+  // Binance unreachable: the agent's own hourly archive still shows
+  const fallback = kErr && tf === "1h" && S && S.chart && S.chart.length;
+  const all = K || (fallback ? S.chart : []);
+  const c = all.slice(-Math.max(20, Math.floor((W - 58) / 7))); // no thinner than ~7 px per candle
+  const sub = $("#market-sub");
+  if (!c.length) {
+    sub.textContent = "";
+    add("text", { x: 0, y: 20 }).textContent = kErr ? "Binance market data is unreachable from here right now." : "Loading candles…";
+    return;
+  }
+  const R = 58, B = 24, T = 10;
   let lo = Math.min(...c.map((k) => k[3])), hi = Math.max(...c.map((k) => k[2]));
   const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
   const x = (i) => (i + 0.5) * ((W - R) / c.length);
   const y = (v) => T + (hi - v) / (hi - lo) * (H - T - B);
+  const dec = hi < 10 ? 3 : 2;
   for (let k = 0; k <= 4; k++) {
     const v = lo + (hi - lo) * k / 4;
     add("line", { x1: 0, x2: W - R, y1: y(v), y2: y(v), stroke: "rgba(133,151,160,0.12)" });
-    add("text", { x: W - R + 8, y: y(v) + 4 }).textContent = v.toFixed(3);
+    add("text", { x: W - R + 8, y: y(v) + 4 }).textContent = v.toFixed(dec);
   }
-  // area under the closes, then candles
   const pts = c.map((k, i) => `${x(i)},${y(k[4])}`).join(" ");
   const grad = add("defs", {});
   grad.innerHTML = '<linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#00ec97" stop-opacity="0.16"/><stop offset="1" stop-color="#00ec97" stop-opacity="0"/></linearGradient>';
   add("polygon", { points: `${x(0)},${H - B} ${pts} ${x(c.length - 1)},${H - B}`, fill: "url(#g)" });
-  const bw = Math.max(2, (W - R) / c.length * 0.5);
+  const bw = Math.max(2, (W - R) / c.length * 0.56);
   c.forEach((k, i) => {
-    const up = k[4] >= k[1], col = up ? "#00ec97" : "#ff7a6b";
+    const up = k[4] >= k[1], col = up ? "#00ec97" : "#ff6b5e";
     add("line", { x1: x(i), x2: x(i), y1: y(k[2]), y2: y(k[3]), stroke: col, "stroke-width": 1 });
-    add("rect", { x: x(i) - bw / 2, y: y(Math.max(k[1], k[4])), width: bw, height: Math.max(1, Math.abs(y(k[1]) - y(k[4]))), fill: up ? col : "#05090d", stroke: col, "stroke-width": 1 });
+    add("rect", { x: x(i) - bw / 2, y: y(Math.max(k[1], k[4])), width: bw, height: Math.max(1, Math.abs(y(k[1]) - y(k[4]))), fill: col });
   });
-  for (const i of [0, Math.floor(c.length / 3), Math.floor(2 * c.length / 3), c.length - 1]) add("text", { x: Math.max(0, Math.min(x(i) - 24, W - R - 70)), y: H - 6 }).textContent = `${day(c[i][0])} ${hhmm(c[i][0])}`;
-  // the agent's NEAR refusals and trades on the bars they concern
-  for (const d of S.decisions.filter((d) => d.asset === "NEAR" && d.action !== "HOLD")) {
-    const i = c.findIndex((k) => k[0] === d.barTime);
-    if (i < 0) continue;
+  // last price line
+  const last = c[c.length - 1][4];
+  add("line", { x1: 0, x2: W - R, y1: y(last), y2: y(last), stroke: "#e9f3ef", "stroke-opacity": 0.35, "stroke-dasharray": "2 4" });
+  add("rect", { x: W - R + 2, y: y(last) - 9, width: R - 4, height: 18, fill: last >= c[c.length - 1][1] ? "#00ec97" : "#ff6b5e" });
+  const tl = add("text", { x: W - R + 8, y: y(last) + 4, fill: "#04080b" }); tl.textContent = last.toFixed(dec); tl.style.fill = "#04080b"; tl.style.fontWeight = "600";
+  // time labels, formatted for the interval
+  const lab = (t) => tf === "1M" ? new Date(t).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })
+    : tf === "1d" || tf === "1w" ? new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: tf === "1w" ? "2-digit" : undefined, timeZone: "UTC" })
+    : `${day(t)} ${hhmm(t)}`;
+  const ticks = W < 600 ? [0, Math.floor(c.length / 2), c.length - 1] : [0, Math.floor(c.length / 3), Math.floor(2 * c.length / 3), c.length - 1];
+  ticks.forEach((i, n) => add("text", { x: n === 0 ? 0 : n === ticks.length - 1 ? W - R : x(i), y: H - 6, "text-anchor": n === 0 ? "start" : n === ticks.length - 1 ? "end" : "middle" }).textContent = lab(c[i][0]));
+  // the agent's NEAR refusals and trades, on the candle that contains their bar
+  let marks = 0;
+  for (const d of S ? S.decisions.filter((d) => d.asset === "NEAR" && d.action !== "HOLD") : []) {
+    const i = c.findIndex((k, j) => k[0] <= d.barTime && (j === c.length - 1 || c[j + 1][0] > d.barTime));
+    if (i < 0 || (i === 0 && d.barTime < c[0][0])) continue;
+    marks++;
     const col = d.action === "TRADE" ? "#00ec97" : "#ffb547";
     add("line", { x1: x(i), x2: x(i), y1: T, y2: H - B, stroke: col, "stroke-opacity": 0.35, "stroke-dasharray": "3 4" });
     add("rect", { x: x(i) - 6, y: y(c[i][2]) - 18, width: 12, height: 12, fill: col, transform: `rotate(45 ${x(i)} ${y(c[i][2]) - 12})` });
   }
-  const refusals = S.decisions.filter((d) => d.asset === "NEAR" && d.action === "REJECT").length;
-  $("#market-sub").textContent = refusals ? `Amber marks: setups the agent refused` : "Hourly candles the agent archived";
+  sub.textContent = fallback ? "Binance unreachable: the agent's own hourly archive" : `${TF_NAME[tf]} candles from Binance, the current one still forming${marks ? ". Amber marks: setups the agent refused" : ""}`;
 }
+tfButtons();
 
 // the real round trip the live agent's key signed through NEAR Intents (evidence files in test/live/recorded/)
 function liveProof(idle) {
@@ -589,6 +633,7 @@ async function refresh() {
 const tick = () => { $("#clock").textContent = new Date().toISOString().slice(11, 16); };
 tick(); setInterval(tick, 10000);
 refresh(); setInterval(refresh, 15000);
+loadCandles(); setInterval(loadCandles, 15000);
 let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(() => S && (chart(), cells()), 100); }).observe(document.body);
 </script>
 
