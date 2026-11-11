@@ -112,7 +112,11 @@ th:first-child, td:first-child { padding-left: var(--pad); } th:last-child, td:l
 td { padding: 11px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
 tr:hover td { background: var(--deck); }
 td.t { color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
-td.h { color: var(--faint); font-size: 12px; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.h { color: var(--faint); font-size: 12px; white-space: nowrap; }
+td.h span { display: inline-block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.mini { font: 500 11.5px var(--body); color: var(--dim); background: transparent; border: 1px solid var(--rule-2); padding: 2px 7px; margin-left: 8px; cursor: pointer; vertical-align: middle; opacity: 0; }
+tr:hover .mini, .mini:focus-visible, tr:focus-within .mini { opacity: 1; }
+@media (hover: none) { .mini { opacity: 1; } }
 .out { display: inline-flex; align-items: center; gap: 8px; font: 600 13.5px var(--display); white-space: nowrap; }
 .out::before { content: ""; width: 7px; height: 7px; transform: rotate(45deg); background: var(--faint); }
 .out.trade { color: var(--near); } .out.trade::before { background: var(--near); }
@@ -270,6 +274,19 @@ function stepStates(sc) {
   return out;
 }
 
+// the tab icon: the NEAR mark with a status dot (green at work, amber paused, red stopped)
+const iconImg = new Image(); iconImg.src = "/assets/near-logo.png";
+let iconColor = "";
+function favicon(color) {
+  if (color === iconColor || !iconImg.complete) { if (!iconImg.complete) iconImg.onload = () => favicon(color); return; }
+  iconColor = color;
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const g = c.getContext("2d");
+  g.drawImage(iconImg, 0, 0, 64, 64);
+  g.beginPath(); g.arc(50, 50, 13, 0, Math.PI * 2); g.fillStyle = "#05090d"; g.fill();
+  g.beginPath(); g.arc(50, 50, 9, 0, Math.PI * 2); g.fillStyle = color; g.fill();
+  document.querySelector('link[rel="icon"]').href = c.toDataURL("image/png");
+}
 function hero() {
   const paper = S.modes.find((m) => m.mode === "paper"), live = S.modes.find((m) => m.mode === "live");
   const run = [live, paper].find((m) => m && m.running);
@@ -293,6 +310,9 @@ function hero() {
     $("#kicker").replaceChildren("Latest decision, ", el("strong", { text: `${sc.asset} on the ${hhmm(sc.barTime)} UTC bar` }));
     $("#because").replaceChildren(sc.action === "TRADE" ? "Every check passed. Recorded and anchored first, then executed." : `${cap(why[sc.reason] || sc.reason)}. `, ...(sc.action === "TRADE" ? [] : [el("b", { text: "Recorded like a trade." })]));
   }
+  const word = !sc ? (run ? "Watching" : "Offline") : sc.action === "TRADE" ? "Trade sent" : sc.action === "REJECT" ? "Refused" : "Holding";
+  document.title = `${paused ? "Paused" : run ? word : "Stopped"}${sc ? `, ${sc.asset} ${hhmm(sc.barTime)} UTC` : ""} | NEAR Sentinel`;
+  favicon(paused ? "#ffb547" : run ? "#00ec97" : "#ff5d5d");
   const st = stepStates(sc);
   $("#rail").replaceChildren(...STEPS.map(([t, s], i) => el("li", { class: `step ${st[i]}${i === STEPS.length - 1 ? " last" : ""}` }, el("b", { text: t }), el("small", { text: s }))));
 }
@@ -412,6 +432,12 @@ function cells() {
   $("#cells").replaceChildren(...out);
 }
 
+const copyMini = (text) => el("button", { class: "mini", type: "button", "aria-label": "Copy the record hash", onclick: async (e) => {
+  e.stopPropagation();
+  const b = e.currentTarget;
+  try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { b.textContent = "Failed"; }
+  setTimeout(() => (b.textContent = "Copy"), 1400);
+} }, "Copy");
 // why a decision has no on-chain anchor: paper runs anchor only when the testnet contract is configured
 // (live runs always anchor, or refuse to trade); decisions older than the first anchored one came before that
 function unanchored(d) {
@@ -444,7 +470,7 @@ function log() {
     el("td", { text: d.action === "TRADE" ? d.detail : cap(why[d.reason] || d.reason || d.detail) }),
     el("td", { class: "t", text: d.llm || "Not asked" }),
     el("td", {}, d.anchor ? el("a", { href: nearblocks(d.anchor.network, "address", d.anchor.contract), target: "_blank", rel: "noopener noreferrer", text: `No. ${d.anchor.seq}, ${d.anchor.network}` }) : el("span", { class: "t", title: unanchored(d)[1], text: unanchored(d)[0] })),
-    el("td", { class: "h", title: d.hash, text: d.hash }));
+    el("td", { class: "h" }, el("span", { title: d.hash, text: d.hash }), copyMini(d.hash)));
   const rows = [];
   for (const it of flat.slice(0, logLimit)) {
     if (it.one) { rows.push(row(it.one)); continue; }
