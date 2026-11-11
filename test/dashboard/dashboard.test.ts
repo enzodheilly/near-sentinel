@@ -96,3 +96,15 @@ describe("dashboard server", () => {
     expect(page.headers.get("content-security-policy")).toMatch(/script-src 'self' 'unsafe-inline'; .*font-src 'self'/);
   });
 });
+
+describe("live proof", () => {
+  it("reads the recorded mainnet round trip from the evidence files", async () => {
+    const { readSwaps } = await import("../../src/dashboard/state.ts");
+    const sw = await readSwaps(new URL("../live/recorded/", import.meta.url).pathname);
+    expect(sw.map((x) => x.side)).toEqual(["buy", "sell"]); // dry quotes and the LLM recording are not swaps
+    expect(sw[0]).toMatchObject({ status: "SUCCESS", assetIn: "USDC", amountIn: 5, assetOut: "NEAR", tx: "BZw8CY6j9sZU2ymZzT1tzw3NUofuV1KiLm5j8k3xNNkj" });
+    expect(sw[1]).toMatchObject({ status: "SUCCESS", assetIn: "NEAR", assetOut: "USDC", amountOut: 4.989653, tx: "DCws6QWLcUUmuwEqiaVrehkU1VEC7DLEjeZRhQXxbHtz" });
+    expect(sw[0]!.settledMs).toBeGreaterThan(0);
+    expect(await readSwaps("/nonexistent")).toEqual([]);
+  });
+});

@@ -60,6 +60,22 @@ export interface ScanView {
   readonly anchored?: boolean;
 }
 
+/** A real swap the live agent's key signed on mainnet, from the evidence files in test/live/recorded/. */
+export interface SwapView {
+  readonly at: number;
+  readonly side: "buy" | "sell";
+  readonly status: string;
+  readonly intentHash: string;
+  readonly tx?: string;
+  readonly amountIn: number;
+  readonly assetIn: string;
+  readonly amountOut: number;
+  readonly assetOut: string;
+  readonly price: number;
+  readonly settledMs?: number;
+  readonly file: string;
+}
+
 export interface DashboardState {
   readonly at: number;
   /** Last NEAR 1h candles from the agent's archive: [openTime, open, high, low, close]. */
@@ -71,6 +87,7 @@ export interface DashboardState {
   readonly liveWallet?: { readonly account: string; readonly usdc: number; readonly near: number; readonly btc: number; readonly error?: string };
   readonly prices?: { readonly NEAR?: number; readonly BTC?: number; readonly at: number };
   readonly decisions: readonly DecisionView[];
+  readonly swaps: readonly SwapView[];
   readonly counts: { readonly total: number; readonly trades: number; readonly rejects: number; readonly holds: number };
 }
 
@@ -124,6 +141,31 @@ async function recentRecords(dir: string, limit: number): Promise<{ hash: string
     if (rec) out.push({ hash: f.slice(0, 64), rec, mtime });
   }
   return out;
+}
+
+/** Swap evidence written by scripts/swap-once.ts (one file per swap), oldest first. */
+export async function readSwaps(dir: string): Promise<SwapView[]> {
+  let files: string[] = [];
+  try {
+    files = (await readdir(dir)).filter((f) => f.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  type Evidence = { at?: string; account?: string; direction?: string; status?: { updatedAt?: string }; report?: { status: string; intentHash?: string; txRefs?: string[]; fill?: { quantityIn: number; quantityOut: number; price: number } } };
+  const out: SwapView[] = [];
+  for (const f of files) {
+    const e = await readJson<Evidence>(join(dir, f));
+    const r = e?.report;
+    if (!e?.at || !e.direction || !r?.intentHash || !r.fill) continue;
+    const sell = e.direction.startsWith("sell");
+    const at = Date.parse(e.at), done = e.status?.updatedAt ? Date.parse(e.status.updatedAt) : NaN;
+    out.push({
+      at, side: sell ? "sell" : "buy", status: r.status, intentHash: r.intentHash, ...(r.txRefs?.[1] ? { tx: r.txRefs[1] } : {}),
+      amountIn: r.fill.quantityIn, assetIn: sell ? "NEAR" : "USDC", amountOut: r.fill.quantityOut, assetOut: sell ? "USDC" : "NEAR", price: r.fill.price,
+      ...(Number.isFinite(done) ? { settledMs: done - at } : {}), file: f,
+    });
+  }
+  return out.sort((a, b) => a.at - b.at);
 }
 
 export interface BuildOptions {
@@ -233,5 +275,6 @@ export async function buildDashboardState(o: BuildOptions): Promise<DashboardSta
     rejects: decisions.filter((d) => d.action === "REJECT").length,
     holds: decisions.filter((d) => d.action === "HOLD").length,
   };
-  return { at: now, chart, ...(scan ? { scan } : {}), modes, guardrails, ...(liveWallet ? { liveWallet } : {}), ...(prices ? { prices } : {}), decisions, counts };
+  const swaps = await readSwaps(join(o.root, "test", "live", "recorded"));
+  return { at: now, chart, swaps, ...(scan ? { scan } : {}), modes, guardrails, ...(liveWallet ? { liveWallet } : {}), ...(prices ? { prices } : {}), decisions, counts };
 }
