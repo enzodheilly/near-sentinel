@@ -445,7 +445,8 @@ function unanchored(d) {
   const first = Math.min(...S.decisions.filter((x) => x.anchor).map((x) => x.at));
   return d.at < first ? ["Before anchoring", "Recorded before on-chain anchoring was switched on"] : ["Local only", "Recorded while the paper agent ran without the testnet contract; still checkable with pnpm verify"];
 }
-// consecutive holds for the same reason on the same day fold into one row; 10 rows at a time
+// the 10 latest decisions one by one; older runs of holds for the same reason on the same day fold into one row;
+// "Show more" adds 10 rows at a time
 let logLimit = 10;
 const opened = new Set();
 function log() {
@@ -454,9 +455,10 @@ function log() {
   const opts = [["ALL", "All"], ["ACTIVE", "Trades and refusals"], ["TRADE", "Trades"], ["REJECT", "Refusals"], ["HOLD", "Holds"]];
   $("#tools").replaceChildren(...opts.map(([k, t]) => el("button", { type: "button", "aria-pressed": String(filter === k), onclick: () => { filter = k; logLimit = 10; log(); } }, t)));
 
-  const items = [];
-  for (const d of shown) {
-    const last = items[items.length - 1];
+  const RECENT = 10;
+  const items = shown.slice(0, RECENT).map((d) => ({ one: d }));
+  for (const d of shown.slice(RECENT)) {
+    const last = items.length > RECENT ? items[items.length - 1] : null;
     if (d.action === "HOLD" && last && last.group && last.reason === d.reason && day(last.group[0].barTime) === day(d.barTime)) last.group.push(d);
     else if (d.action === "HOLD") items.push({ group: [d], reason: d.reason });
     else items.push({ one: d });
