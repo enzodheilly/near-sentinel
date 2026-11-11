@@ -115,6 +115,37 @@ td.h { color: var(--faint); font-size: 12px; max-width: 190px; overflow: hidden;
 .out.trade { color: var(--near); } .out.trade::before { background: var(--near); }
 .out.reject { color: var(--amber); } .out.reject::before { background: var(--amber); }
 .out.hold { color: var(--dim); }
+tbody tr.row { cursor: pointer; }
+tbody tr.row:focus-visible { outline: 2px solid var(--near); outline-offset: -2px; }
+
+/* decision detail: a drawer on the right */
+dialog.detail { margin: 0 0 0 auto; width: min(560px, 100%); height: 100%; max-height: 100%; max-width: 100%; padding: 0; border: 0; border-left: 1px solid var(--rule-2); background: var(--deck); color: var(--text); }
+dialog.detail::backdrop { background: rgba(2, 5, 8, 0.62); }
+dialog.detail[open] { animation: slide 0.22s ease-out; }
+@keyframes slide { from { transform: translateX(24px); opacity: 0; } }
+.dh { position: sticky; top: 0; background: var(--deck); padding: 22px var(--pad) 18px; border-bottom: 1px solid var(--rule); z-index: 1; }
+.dh .row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.dh .when { font-size: 13.5px; color: var(--dim); }
+.dh .when strong { color: var(--text); font-weight: 500; }
+.dh h2 { font: 600 44px/1 var(--display); margin: 12px 0 6px; }
+.dh h2.hold { color: var(--text); } .dh h2.reject { color: var(--amber); } .dh h2.trade { color: var(--near); }
+.dh p { margin: 0; color: var(--dim); font-size: 15px; }
+.btn { font: 500 13px var(--body); color: var(--dim); background: transparent; border: 1px solid var(--rule-2); padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+.btn:hover { color: var(--text); border-color: var(--dim); }
+.ds { padding: 20px var(--pad); border-bottom: 1px solid var(--rule); }
+.ds h3 { margin: 0 0 12px; font: 600 15px/1.2 var(--display); }
+.ds .note { font-size: 13px; color: var(--faint); margin: 10px 0 0; }
+.facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.facts li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; font-size: 14px; }
+.facts li::before { content: ""; width: 7px; height: 7px; transform: translateY(-1px) rotate(45deg); background: var(--faint); justify-self: center; }
+.facts li.ok::before { background: var(--near); } .facts li.no::before { background: var(--amber); }
+.facts li span { min-width: 0; }
+.facts li small { display: block; color: var(--faint); font-size: 12.5px; overflow-wrap: anywhere; }
+.facts li em { font-style: normal; font-size: 12.5px; color: var(--dim); font-variant-numeric: tabular-nums; text-align: right; }
+.facts li.ok em { color: var(--near); } .facts li.no em { color: var(--amber); }
+.hash { display: flex; gap: 10px; align-items: flex-start; }
+.hash code { flex: 1; min-width: 0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--dim); overflow-wrap: anywhere; }
+.proof dl { margin-top: 14px; }
 footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; }
 
 @media (max-width: 1100px) {
@@ -176,6 +207,7 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
     <tbody id="log"></tbody>
   </table></div>
 </section>
+<dialog class="detail" id="detail" aria-labelledby="d-verdict"></dialog>
 <footer>Local page on 127.0.0.1, refreshed every 15 seconds. No wallet and no keys: nothing here can act. Recompute any record with pnpm verify and its hash.</footer>
 
 <script>
@@ -349,10 +381,10 @@ function cells() {
 
 function log() {
   const shown = S.decisions.filter((d) => filter === "ALL" || d.action === filter || (filter === "ACTIVE" && d.action !== "HOLD"));
-  $("#log-sub").textContent = `${shown.length} in the last 7 days`;
+  $("#log-sub").textContent = `${shown.length} in the last 7 days. Open one to see what the agent saw.`;
   const opts = [["ALL", "All"], ["ACTIVE", "Trades and refusals"], ["TRADE", "Trades"], ["REJECT", "Refusals"], ["HOLD", "Holds"]];
   $("#tools").replaceChildren(...opts.map(([k, t]) => el("button", { type: "button", "aria-pressed": String(filter === k), onclick: () => { filter = k; log(); } }, t)));
-  const rows = shown.map((d) => el("tr", {},
+  const rows = shown.map((d) => el("tr", { class: "row", tabindex: "0", "aria-label": `Open the ${d.asset} decision of ${day(d.barTime)} ${hhmm(d.barTime)}`, onclick: (e) => { if (!e.target.closest("a")) openDetail(d); }, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(d); } } },
     el("td", { class: "t", text: ago(d.at, S.at) }),
     el("td", { class: "t", text: `${day(d.barTime)}, ${hhmm(d.barTime)}` }),
     el("td", { text: d.asset }),
@@ -363,6 +395,85 @@ function log() {
     el("td", { class: "h", title: d.hash, text: d.hash })));
   $("#log").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "8", class: "quiet", text: "Nothing in the last 7 days. The log fills at each hourly close." }))]));
 }
+
+// ---------- decision detail
+const SIG = {
+  BB_BREAKOUT: ["Breakout", (e) => e.close && e.upper ? `Close ${fmt(e.close)} above the band at ${fmt(e.upper)}` : ev(e)],
+  RSI_MOMENTUM: ["Momentum", (e) => `RSI ${fmt(e.rsi)}, wanted between ${fmt(e.low)} and ${fmt(e.high)}`],
+  RSI_EXHAUSTION: ["Momentum", (e) => `RSI ${fmt(e.rsi)}: the move is already stretched`],
+  FVG_SUPPORT: ["Support", (e) => `Unfilled gap ${fmt(e.fvgBottom)} to ${fmt(e.fvgTop)}, ${e.ageBars} bars old`],
+  BTC_REGIME: ["BTC trend", (e) => `Bitcoin 4h close ${fmt(e.btcClose4h)}, average ${fmt(e.ema4h)}`],
+};
+const CHECK = {
+  kill_switch: "Kill switch is off", fresh_data: "Market data is fresh", daily_loss: "Daily loss within the limit", max_drawdown: "Drawdown within the limit",
+  entries_today: "Entries today under the cap", breakout: "Breakout present", no_open_position: "No position already open", no_cooldown: "Not cooling down after a stop",
+  no_rsi_exhaustion_veto: "Move not stretched", no_btc_regime_veto: "Bitcoin not pulling the other way", confirmations: "Enough confirmations",
+  risk_budget: "Risk within 1 % of equity", stop_min_distance: "Stop not too close", stop_max_distance: "Stop not too far", reward_to_cost: "Reward covers the costs",
+  min_notional: "Trade above the minimum size", balance: "Enough balance", price_sanity: "Quote close to the market price", quote_fresh: "Quote is fresh",
+  slippage: "Slippage within the limit", idempotency: "Not already executed", contract_policy: "On-chain guardrail allows it", llm_multiplier: "LLM did not refuse it", exits_done: "Exits handled first",
+};
+const KIND_NAME = { BB_BREAKOUT: "breakout", RSI_MOMENTUM: "momentum", RSI_EXHAUSTION: "stretched move", FVG_SUPPORT: "support", BTC_REGIME: "Bitcoin trend" };
+const measure = (c) => {
+  if (c.value == null) return c.ok ? "Pass" : "Fail";
+  if (c.name === "daily_loss" || c.name === "max_drawdown") return `${fmt(c.value)} %, stop at ${fmt(c.limit)} %`;
+  if (c.name === "confirmations") return `${fmt(c.value)}, needs ${fmt(c.limit)}`;
+  if (c.limit != null) return `${fmt(c.value)} of ${fmt(c.limit)}`;
+  return fmt(c.value);
+};
+function fmt(x) { if (x == null || Number.isNaN(Number(x))) return "?"; const n = Number(x); return Math.abs(n) >= 1000 ? Math.round(n).toLocaleString("en-US") : String(Number(n.toPrecision(4))); }
+function ev(e) { return Object.entries(e).map(([k, v]) => `${k} ${fmt(v)}`).join(", "); }
+const copyBtn = (text, label = "Copy") => el("button", { class: "btn", type: "button", onclick: async (e) => {
+  const b = e.currentTarget;
+  try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { b.textContent = "Select and copy"; }
+  setTimeout(() => (b.textContent = label), 1600);
+} }, label);
+
+function openDetail(d) {
+  const dlg = $("#detail");
+  const word = d.action === "TRADE" ? "Trade sent." : d.action === "REJECT" ? "Refused." : "Holding.";
+  const reason = d.action === "TRADE" ? cap(d.detail) + "." : `${cap(why[d.reason] || d.reason || d.detail)}.`;
+  const head = el("div", { class: "dh" },
+    el("div", { class: "row1" }, el("span", { class: "when" }, el("strong", { text: `${d.asset}, ${day(d.barTime)} ${hhmm(d.barTime)} UTC bar` }), `, decided ${ago(d.at, S.at)}`),
+      el("button", { class: "btn", type: "button", onclick: () => dlg.close() }, "Close")),
+    el("h2", { id: "d-verdict", class: d.action.toLowerCase(), text: word }), el("p", { text: reason }));
+
+  // what it saw: the four signal families, found or not
+  const fam = [["Breakout", ["BB_BREAKOUT"]], ["Momentum", ["RSI_MOMENTUM", "RSI_EXHAUSTION"]], ["Support", ["FVG_SUPPORT"]], ["BTC trend", ["BTC_REGIME"]]];
+  const saw = el("ul", { class: "facts" }, ...fam.map(([name, kinds]) => {
+    const s = d.signals.find((x) => kinds.includes(x.kind));
+    const ok = s && s.direction === "bullish", against = s && (s.direction === "veto" || s.direction === "bearish");
+    return el("li", { class: ok ? "ok" : against ? "no" : "" }, el("span", {}, name, el("small", { text: s ? SIG[s.kind][1](s.evidence) : "Not found on this bar" })), el("em", { text: ok ? "For" : against ? "Against" : "None" }));
+  }));
+
+  const rules = d.checks.length ? el("ul", { class: "facts" }, ...d.checks.map((c) => el("li", { class: c.ok ? "ok" : "no" },
+    el("span", {}, CHECK[c.name] || cap(c.name.replace(/_/g, " ")), c.detail ? el("small", { text: cap(c.detail.split(",").map((k) => KIND_NAME[k] || k).join(", ")) }) : null),
+    el("em", { text: measure(c) }))))
+    : el("p", { class: "quiet", text: "No rule needed checking: nothing to act on." });
+
+  const r = d.review;
+  const llm = r ? el("dl", {}, el("dt", { text: "Verdict" }), el("dd", { class: r.verdict === "approve" ? "good" : "warn", text: `${cap(r.verdict)}, size × ${r.sizeMultiplier}` }),
+      el("dt", { text: "Why" }), el("dd", { text: r.rationale || "No rationale" }),
+      el("dt", { text: "Model" }), el("dd", { text: r.model }),
+      el("dt", { text: "Attestation" }), el("dd", { class: r.attestation === "verified" ? "good" : r.attestation ? "warn" : "", text: r.attestation ? cap(r.attestation) : "Not checked" }),
+      ...(r.fallbackReason ? [el("dt", { text: "Fallback" }), el("dd", { class: "warn", text: r.fallbackReason })] : []))
+    : el("p", { class: "quiet", text: "Not asked. The LLM only reviews setups that pass every rule, and it can only shrink or refuse a trade." });
+
+  const a = d.anchor;
+  const proof = el("div", { class: "proof" },
+    el("div", { class: "hash" }, el("code", { text: d.hash }), copyBtn(d.hash)),
+    el("dl", {},
+      el("dt", { text: "On chain" }), el("dd", {}, a ? el("a", { href: nearblocks(a.network, "address", a.contract), target: "_blank", rel: "noopener noreferrer", text: `No. ${a.seq} on ${a.contract}` }) : el("span", { class: "t", text: a === null ? "Not anchored" : "Unknown" })),
+      ...(a ? [el("dt", { text: "Written" }), el("dd", { text: `${day(a.at)} ${new Date(a.at).toISOString().slice(11, 19)} UTC, ${a.network}` })] : []),
+      ...(d.agentVersion ? [el("dt", { text: "Agent version" }), el("dd", { text: d.agentVersion.slice(0, 12) })] : []),
+      el("dt", { text: "Check it" }), el("dd", {}, el("div", { class: "hash" }, el("code", { text: `pnpm verify ${d.hash.slice(0, 12)}` }), copyBtn(`pnpm verify ${d.hash.slice(0, 12)}`)))),
+    el("p", { class: "note", text: "verify recomputes this decision from the record's inputs and must land on the same hash, byte for byte." }));
+
+  const sec = (title, body) => el("section", { class: "ds" }, el("h3", { text: title }), body);
+  dlg.replaceChildren(head, sec("What it saw", saw), sec("Rules it checked", rules), sec("LLM review", llm), sec("Proof", proof));
+  if (!dlg.open) dlg.showModal();
+  dlg.scrollTop = 0;
+}
+$("#detail").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }); // click on the backdrop
 
 function render() { hero(); gauges(); chart(); cells(); log(); }
 async function refresh() {
