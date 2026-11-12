@@ -52,10 +52,6 @@ jobs:
         with:
           name: guardrail-wasm
           path: contracts/guardrail/target/near/near_sentinel_guardrail.wasm
-      - name: Print the wasm (temporary, to commit it)
-        run: |
-          sha256sum contracts/guardrail/target/near/near_sentinel_guardrail.wasm
-          echo "WASM-BEGIN"; base64 -w 0 contracts/guardrail/target/near/near_sentinel_guardrail.wasm; echo; echo "WASM-END"
       # near-kit downloads the sandbox binary to a temp dir then renames it under $HOME: keep both on one disk
       - name: Contract tests in a NEAR sandbox
         run: |
