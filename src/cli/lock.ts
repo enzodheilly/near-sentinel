@@ -5,7 +5,7 @@
  * process that no longer exists (crash, reboot) is taken over.
  */
 
-import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { link, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export type Lock = { readonly release: () => Promise<void> };
@@ -24,9 +24,17 @@ export async function acquireLock(path: string, o: { pid?: number; alive?: (pid:
   await mkdir(dirname(path), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const f = await open(path, "wx"); // fails if the file exists: no two processes can both create it
+      // the pid is written to a private file first, then linked into place: `link` fails if the lock exists, and
+      // a reader never sees the lock without its pid (an empty lock would look stale and be taken over)
+      const tmp = `${path}.${pid}.tmp`;
+      const f = await open(tmp, "w");
       await f.writeFile(`${pid}\n`);
       await f.close();
+      try {
+        await link(tmp, path);
+      } finally {
+        await rm(tmp, { force: true });
+      }
       return { release: async () => { await rm(path, { force: true }); } };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;

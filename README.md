@@ -123,6 +123,8 @@ Copy `.env.example` to `.env` and fill in only what each mode needs. Keys stay i
 node scripts/deploy-guardrail.ts --network testnet --owner <you>.testnet
 ```
 
+Each anchored decision stays in the contract's storage, about 130 bytes, or 0.0013 NEAR locked from the contract's balance. The paper agent anchors two decisions an hour, about 0.06 NEAR a day. When the balance runs out, anchoring fails and the agent stops trading (it never trades unanchored), so top the contract up from the owner account now and then.
+
 **Live mode on mainnet**, run once by the owner. Each step asks for an explicit flag:
 
 ```bash
