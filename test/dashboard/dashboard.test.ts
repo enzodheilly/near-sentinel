@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { buildProof } from "../../src/dashboard/proof.ts";
 import { startDashboard } from "../../src/dashboard/server.ts";
 import { buildDashboardState, type ChainReader } from "../../src/dashboard/state.ts";
 
@@ -168,5 +169,32 @@ describe("a demo run does not hide the agent's decisions", () => {
     const s = await buildDashboardState({ root, env: {}, now: NOW, limit: 10 });
     expect(s.decisions.map((d) => d.hash[0])).toEqual(["a", "b"]);
     expect(s.funnel.total).toBe(2);
+  });
+});
+
+describe("proof tab", () => {
+  it("serves a record's exact bytes for the browser to hash, and nothing outside records/", async () => {
+    const root = await fixture();
+    const { server, url } = await startDashboard({ root, env, port: 0, clock: () => NOW });
+    try {
+      const name = (await readdir(join(root, "records"))).find((f) => f.endsWith(".json"))!;
+      const r = await fetch(`${url}/api/record/${name.slice(0, 64)}`);
+      expect(r.status).toBe(200);
+      expect(Buffer.from(await r.arrayBuffer()).equals(await readFile(join(root, "records", name)))).toBe(true);
+      expect((await fetch(`${url}/api/record/${"0".repeat(64)}`)).status).toBe(404);
+      for (const bad of ["..%2F..%2Fpackage.json", "abc", `${"a".repeat(64)}.json`]) expect((await fetch(`${url}/api/record/${bad}`)).status).toBe(400);
+      expect(await (await fetch(url)).text()).toContain('id="view-proof"');
+    } finally {
+      server.close();
+    }
+  });
+
+  it("re-checks the recorded LLM exchange from its bytes", async () => {
+    const root = new URL("../../", import.meta.url).pathname;
+    const p = await buildProof(root);
+    expect(p.llm?.model).toBe("Qwen/Qwen3.6-35B-A3B-FP8");
+    expect(p.llm?.checks.map((c) => c.ok)).toEqual([true, true, true, true]);
+    const empty = await mkdtemp(join(tmpdir(), "proof-"));
+    expect(await buildProof(empty)).toEqual({});
   });
 });
