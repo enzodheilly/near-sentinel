@@ -155,6 +155,8 @@ fixtures/         frozen market data for the demo and the tests
 test/             unit, property, golden, sandbox-contract and recorded live tests
 ```
 
-## Data licence
+## Licence
+
+The code is under the [MIT licence](./LICENSE).
 
 The candles in `fixtures/` (and embedded in the explorer) are Binance market data from Binance Vision, licensed under CC BY-NC-SA 4.0, for non-commercial use. See `fixtures/README.md`. Live candles are never committed.
