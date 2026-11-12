@@ -62,4 +62,11 @@ describe("decision explorer", () => {
     expect(JSON.parse(out.slice(out.indexOf("= ") + 2, out.lastIndexOf(";</script>"))).agentVersion).toBe(evil.agentVersion);
     expect(() => renderExplorer("<html></html>", data)).toThrow(/placeholder/);
   });
+
+  it("keeps `$&`, `$$` and `$'` in the data literally (no replacement patterns)", () => {
+    const tricky = { ...data, agentVersion: "fee $$ then $& and $' end" };
+    const out = renderExplorer("<script>const DATA = /*__DATA__*/null;</script><p>tail</p>", tricky);
+    expect(JSON.parse(out.slice(out.indexOf("= ") + 2, out.indexOf(";</script>"))).agentVersion).toBe(tricky.agentVersion);
+    expect(out.match(/<p>tail<\/p>/g)).toHaveLength(1);
+  });
 });

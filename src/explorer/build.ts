@@ -136,7 +136,7 @@ export async function paperScenario(o: { records: string; archiveDir: string; co
 export function renderExplorer(template: string, data: ExplorerData): string {
   const json = JSON.stringify(data, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v)).replace(/</g, "\\u003c");
   if (!template.includes("/*__DATA__*/null")) throw new Error("explorer template: data placeholder missing");
-  return template.replace("/*__DATA__*/null", json);
+  return template.replace("/*__DATA__*/null", () => json); // a function: `$&`, `$$`… in the data stay literal
 }
 
 export async function runExplorer(o: { root: string; records: string; out?: string; write: (l: string) => void; agentVersion?: string; now?: () => number; anchor?: AnchorCheck }): Promise<number> {

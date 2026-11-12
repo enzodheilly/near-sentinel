@@ -102,6 +102,12 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
       "referrer-policy": "no-referrer",
       "content-security-policy": `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' ${HYPERLIQUID_WS}; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'`,
     };
+    // DNS rebinding: a web page whose domain resolves to 127.0.0.1 would otherwise be same-origin with us
+    const host = (req.headers.host ?? "").toLowerCase();
+    if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host)) {
+      res.writeHead(421, headers).end("unexpected Host header");
+      return;
+    }
     if (req.method !== "GET") {
       res.writeHead(405, { ...headers, allow: "GET" }).end("read-only");
       return;

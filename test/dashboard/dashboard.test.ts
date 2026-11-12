@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -100,6 +101,12 @@ describe("dashboard server", () => {
     for (const path of ["/vendor/three.module.js", "/vendor/three.core.js", "/vendor/RoomEnvironment.js", "/fonts/chakra-600.woff2", "/assets/near-logo.png"]) expect((await fetch(`${url}${path}`)).status).toBe(200);
     for (const path of ["/vendor/../../package.json", "/fonts/x.woff2", "/constructor", "/__proto__"]) expect((await fetch(`${url}${path}`)).status).toBe(404);
     expect(page.headers.get("content-security-policy")).toMatch(/script-src 'self' 'unsafe-inline'; .*font-src 'self'/);
+    // DNS rebinding: only a 127.0.0.1 / localhost Host is served
+    const withHost = (host: string) => new Promise<number>((resolve, reject) => {
+      request(`${url}/api/state`, { headers: { host } }, (r) => { r.resume(); resolve(r.statusCode ?? 0); }).on("error", reject).end();
+    });
+    expect(await withHost("evil.example:4747")).toBe(421);
+    expect(await withHost("localhost:4747")).toBe(200);
   });
 });
 
