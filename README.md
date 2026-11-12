@@ -113,7 +113,7 @@ Copy `.env.example` to `.env` and fill in only what each mode needs. Keys stay i
 |---|---|---|
 | `pnpm demo`, `pnpm verify <hash>`, `pnpm explorer` | Offline replay, verification, and the decision explorer | Nothing |
 | `pnpm paper` | Runs on the real market with simulated money until Ctrl+C. One decision per asset at each 1h close, and stops watched every 60 s. | `ONECLICK_JWT` recommended; `NEARAI_API_KEY` for the LLM review |
-| `pnpm dashboard` | Local, read-only live page on http://127.0.0.1:4747 | Nothing (reads `state/`, `records/` and the chain) |
+| `pnpm dashboard` | Local, read-only live page on http://127.0.0.1:4747. Its Proof tab re-hashes any anchored record in your browser and shows the contracts, swaps and signed LLM review behind each claim. | Nothing (reads `state/`, `records/` and the chain) |
 | `pnpm status paper` | The paper portfolio and heartbeat in the terminal | Nothing |
 | `pnpm live --yes-real-funds` | The same loop with real swaps inside NEAR Intents | The mainnet guardrail and a live key, set up below |
 

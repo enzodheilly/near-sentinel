@@ -260,12 +260,76 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
   .rail { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 14px; }
 }
 @media (prefers-reduced-motion: reduce) { .step::after { box-shadow: none !important; } }
+
+/* proof: each claim next to the check that backs it; the verifier is the one moving part */
+.pr-head { padding: 30px var(--pad) 0; border-bottom: 1px solid var(--rule);
+  background: radial-gradient(800px 360px at 85% 0%, rgba(0, 236, 151, 0.07), transparent 70%), var(--ink); }
+.pr-head h1 { margin: 0 0 8px; font: 600 clamp(30px, 3vw, 42px)/1 var(--display); }
+.pr-head .lede { max-width: 70ch; }
+.verifier { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr); border-bottom: 1px solid var(--rule); }
+.v-pick { padding: 26px var(--pad); min-width: 0; border-right: 1px solid var(--rule); }
+.v-run { padding: 26px var(--pad) 30px; min-width: 0; background: var(--deck); }
+.picks { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.picks button { width: 100%; display: grid; grid-template-columns: 92px 44px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; text-align: left;
+  background: transparent; border: 0; border-bottom: 1px solid var(--rule); color: var(--text); font: 14px var(--body); padding: 10px 8px; cursor: pointer; }
+.picks button:hover { background: var(--deck); }
+.picks button[aria-current="true"] { background: var(--near-soft); box-shadow: inset 3px 0 0 var(--near); }
+.picks .t { color: var(--dim); font-variant-numeric: tabular-nums; }
+.picks .n { color: var(--faint); font-size: 12.5px; white-space: nowrap; }
+.v-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.v-title h3 { margin: 0; font: 600 17px/1.25 var(--display); }
+.v-title .tools { flex-wrap: nowrap; }
+.checks { list-style: none; margin: 0; padding: 0; }
+.chk { position: relative; padding: 0 0 22px 34px; }
+.chk::before { content: ""; position: absolute; left: 5px; top: 16px; bottom: 0; width: 2px; background: var(--rule-2); }
+.chk:last-child::before { display: none; }
+.chk::after { content: ""; position: absolute; left: 0; top: 3px; width: 10px; height: 10px; transform: rotate(45deg); background: var(--ink); border: 2px solid var(--rule-2); transition: background .25s, border-color .25s, box-shadow .25s; }
+.chk b { display: block; font: 500 15px/1.3 var(--display); color: var(--faint); transition: color .25s; }
+.chk p { margin: 4px 0 0; font-size: 13.5px; color: var(--dim); }
+.chk.ok::after { background: var(--near); border-color: var(--near); box-shadow: 0 0 12px var(--near); }
+.chk.ok::before { background: var(--near); }
+.chk.ok b { color: var(--text); }
+.chk.no::after { background: var(--fault); border-color: var(--fault); box-shadow: 0 0 12px rgba(255, 93, 93, 0.6); }
+.chk.no b { color: var(--fault); }
+.chk.wait::after { border-color: var(--amber); }
+.hex { margin-top: 10px; font: 13px/1.6 ui-monospace, "SFMono-Regular", Menlo, monospace; word-break: break-all; background: var(--ink); border: 1px solid var(--rule); padding: 10px 12px; }
+.hex div { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; }
+.hex span { color: var(--faint); font-family: var(--body); font-size: 12px; }
+.hex .m { color: var(--near); } .hex .x { color: var(--fault); background: rgba(255, 93, 93, 0.14); }
+.cmd { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.cmd code { font: 13px ui-monospace, Menlo, monospace; background: var(--ink); border: 1px solid var(--rule); padding: 6px 10px; color: var(--text); }
+.tamper { margin-top: 6px; font-size: 13px; color: var(--amber); }
+.contracts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--rule); }
+.ct { padding: 26px var(--pad); min-width: 0; }
+.ct + .ct { border-left: 1px solid var(--rule); }
+.ct h3 { margin: 0 0 4px; font: 600 17px/1.25 var(--display); }
+.ct .acct { font-size: 13.5px; word-break: break-all; }
+.facts { margin: 16px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; font-size: 14px; }
+.facts dt { color: var(--dim); } .facts dd { margin: 0; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+.ct-note { padding: 14px var(--pad) 18px; border-bottom: 1px solid var(--rule); font-size: 13.5px; color: var(--dim); margin: 0; }
+.ct-note b { color: var(--text); font-weight: 500; }
+.sig { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; }
+.sig .say { padding-right: var(--pad); }
+.sig blockquote { margin: 12px 0 0; padding: 0 0 0 14px; border-left: 2px solid var(--amber); font: 500 16px/1.45 var(--display); color: var(--text); }
+.sig .verd { font: 600 26px/1 var(--display); color: var(--amber); }
+.sig .checks { padding-left: var(--pad); border-left: 1px solid var(--rule); }
+@media (max-width: 980px) {
+  .verifier, .contracts, .sig { grid-template-columns: minmax(0, 1fr); }
+  .v-pick { border-right: 0; border-bottom: 1px solid var(--rule); }
+  .ct + .ct { border-left: 0; border-top: 1px solid var(--rule); }
+  .sig .checks { padding-left: 0; border-left: 0; margin-top: 22px; } .sig .say { padding-right: 0; }
+}
+.kpis.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.picks .t { white-space: nowrap; }
+@media (max-width: 1100px) { .kpis.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpis.four .kpi:nth-child(odd) { border-left: 0; } .kpis.four .kpi:nth-child(n+3) { border-top: 1px solid var(--rule); } }
+@media (max-width: 520px) { .picks button { grid-template-columns: 100px 40px minmax(0, 1fr); font-size: 13.5px; } .picks .n { display: none; } }
+@media (prefers-reduced-motion: reduce) { .chk::after, .chk b { transition: none; } }
 </style>
 </head>
 <body>
 <header class="top">
   <div class="brand"><img src="/assets/near-logo.png" alt="NEAR"><b>NEAR Sentinel</b>
-    <nav class="tabs" aria-label="Pages"><a href="#overview" id="tab-overview">Overview</a><a href="#portfolio" id="tab-portfolio">Portfolio</a></nav></div>
+    <nav class="tabs" aria-label="Pages"><a href="#overview" id="tab-overview">Overview</a><a href="#portfolio" id="tab-portfolio">Portfolio</a><a href="#proof" id="tab-proof">Proof</a></nav></div>
   <div class="status" aria-live="polite">
     <span><i class="lamp" id="lamp"></i><span id="state">Connecting to the agent</span></span>
     <span>Next decision <strong id="next">—</strong></span>
@@ -349,6 +413,45 @@ footer { padding: 18px var(--pad) 28px; color: var(--faint); font-size: 12.5px; 
 <section class="pf-two">
   <div class="pf-cell"><div class="head"><h2>Limits today</h2></div><p class="lede">How close the agent is to each limit that stops it. They reset at 00:00 UTC, except the kill switch.</p><ul class="limits" id="pf-limits"></ul></div>
   <div class="pf-cell"><div class="head"><h2>Trades</h2><span id="pf-trades-sub"></span></div><div class="scroll"><table><thead><tr><th>When, UTC</th><th>Asset</th><th>Trade</th><th>Price</th></tr></thead><tbody id="pf-trades"></tbody></table></div></div>
+</section>
+</main>
+
+<main id="view-proof" hidden>
+<section class="pr-head">
+  <h1>Proof</h1>
+  <p class="lede">You should not have to trust this page, or the agent. Each claim below sits next to the check that backs it: the record's own bytes, the NEAR blockchain, or a signature made inside secure hardware. Run the checks yourself.</p>
+  <div class="kpis" id="pr-kpis"></div>
+</section>
+
+<section class="verifier" aria-labelledby="v-h">
+  <div class="v-pick">
+    <div class="head"><h2 id="v-h">Check one decision yourself</h2></div>
+    <p class="lede">Pick any decision written on chain. Your browser downloads its record and checks it here, without asking the agent anything.</p>
+    <ul class="picks" id="picks"></ul>
+  </div>
+  <div class="v-run" id="vrun" aria-live="polite"></div>
+</section>
+
+<section class="pf-sec" style="padding-bottom:6px; border-bottom:0">
+  <div class="head"><h2>The rules live on chain</h2></div>
+  <p class="lede">Each agent answers to a NEAR contract it cannot overrule. The contract caps how many positions it may open per day and can be paused; only the owner can lift a pause or change the policy.</p>
+</section>
+<section class="contracts" id="contracts" aria-label="The guardrail contracts"></section>
+<p class="ct-note">The agent's key may call only <b>record_decision</b> and <b>pause</b>: it cannot move the contract's funds, deploy code, or change the policy. Exits are always accepted, so a pause or the cap never blocks a stop.</p>
+
+<section class="pf-sec">
+  <div class="head"><h2>Real money, real swaps</h2><span id="sw-sub"></span></div>
+  <p class="lede">Swaps signed by the agent's own key through NEAR Intents on mainnet, using the same code the live agent runs. Open the transactions on NearBlocks.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>When, UTC</th><th>Swap</th><th>Price</th><th>Settled in</th><th>Transaction</th></tr></thead>
+    <tbody id="swaps"></tbody>
+  </table></div>
+</section>
+
+<section class="pf-sec">
+  <div class="head"><h2>The LLM can only say less, and signs what it says</h2><span id="llm-sub"></span></div>
+  <p class="lede">A model on NEAR AI Cloud reviews a setup only after every rule passed. It may keep, halve or refuse the size, never raise it. Its answer is signed inside a TEE. This is a real review, re-checked by this page's server from the recorded bytes.</p>
+  <div class="sig" id="llm"></div>
 </section>
 </main>
 
@@ -819,7 +922,7 @@ function funnel() {
       : [rows[i - 1][2] === 0 ? "none reached this step" : i === rows.length - 1 ? "the contract allowed every trade asked" : "none stopped here"])))));
 }
 
-function render() { hero(); funnel(); chart(); agents(); log(); }
+function render() { hero(); funnel(); chart(); agents(); log(); if (location.hash === "#proof") proofView(); }
 async function refresh() {
   try {
     const r = await fetch("/api/state", { cache: "no-store" });
@@ -835,14 +938,160 @@ tick(); setInterval(tick, 10000);
 
 // ---------- pages: overview and portfolio (hash routes)
 function route() {
-  const page = location.hash === "#portfolio" ? "portfolio" : "overview";
+  const page = location.hash === "#portfolio" ? "portfolio" : location.hash === "#proof" ? "proof" : "overview";
   $("#view-overview").hidden = page !== "overview";
   $("#view-portfolio").hidden = page !== "portfolio";
-  for (const k of ["overview", "portfolio"]) { const t = $(`#tab-${k}`); if (k === page) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current"); }
+  $("#view-proof").hidden = page !== "proof";
+  for (const k of ["overview", "portfolio", "proof"]) { const t = $(`#tab-${k}`); if (k === page) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current"); }
   if (page === "portfolio") loadPortfolio();
+  else if (page === "proof") { loadProof(); proofView(); }
   else if (S) { chart(); window.dispatchEvent(new Event("resize")); }
 }
 window.addEventListener("hashchange", route);
+
+// ---------- proof: claims next to checks; the browser re-hashes records itself
+let PROOF = null, proofLoading = false, vSel = null, vTamper = false, vRun = 0;
+async function loadProof() {
+  if (PROOF || proofLoading) return;
+  proofLoading = true;
+  try { const r = await fetch("/api/proof", { cache: "no-store" }); if (r.ok) { PROOF = await r.json(); proofView(); } } catch {} finally { proofLoading = false; }
+}
+// RFC 8785: keys sorted by UTF-16 code units, numbers in their shortest ECMAScript form, no whitespace
+const canon = (v) => v === null || typeof v !== "object" ? JSON.stringify(v)
+  : Array.isArray(v) ? `[${v.map(canon).join(",")}]`
+  : `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`;
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+const quiet = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const pause = (ms) => new Promise((r) => setTimeout(r, quiet ? 0 : ms));
+const netName = (n) => n === "mainnet" ? "mainnet" : "testnet";
+const outWord = (d) => d.action === "TRADE" ? "Trade" : d.action === "REJECT" ? "Refused" : "Hold";
+
+function proofView() {
+  if (!S) return;
+  const g = S.guardrails || [];
+  const onChain = g.reduce((a, x) => a + (x.decisionCount || 0), 0);
+  const swaps = S.swaps || [];
+  const buy = swaps.find((x) => x.side === "buy"), sell = swaps.find((x) => x.side === "sell");
+  const rt = buy && sell ? (buy.amountIn - sell.amountOut) / buy.amountIn * 100 : null;
+  const llmOk = PROOF && PROOF.llm ? PROOF.llm.checks.every((c) => c.ok) : null;
+  const k = (label, value, small, cls = "") => el("div", { class: "kpi" }, el("span", { text: label }), el("strong", { class: cls, text: value }), el("small", { text: small }));
+  const kp = $("#pr-kpis");
+  kp.classList.add("four");
+  kp.replaceChildren(
+    k("Decisions on chain", g.some((x) => x.decisionCount !== undefined) ? onChain.toLocaleString("en-US") : "—", g.filter((x) => x.decisionCount !== undefined).map((x) => `${x.decisionCount} on ${netName(x.network)}`).join(", ") || "contract not reachable"),
+    k("Real swaps on mainnet", String(swaps.filter((x) => x.status === "SUCCESS").length), "USDC to NEAR and back", "good"),
+    k("Round-trip cost", rt === null ? "—" : `${rt.toFixed(2)} %`, buy ? `${usd(buy.amountIn - sell.amountOut)} on ${usd(buy.amountIn)}` : ""),
+    k("LLM signature", llmOk === null ? "—" : llmOk ? "Valid" : "Failed", "re-checked by this server", llmOk ? "good" : llmOk === false ? "bad" : ""));
+
+  // picker: the latest anchored decisions
+  const anchored = S.decisions.filter((d) => d.anchor).slice(0, 12);
+  if (!vSel || !anchored.some((d) => d.hash === vSel)) { vSel = anchored[0]?.hash ?? null; vTamper = false; }
+  $("#picks").replaceChildren(...(anchored.length ? anchored.map((d) => el("li", {}, el("button", { type: "button", "aria-current": String(d.hash === vSel), onclick: () => { vSel = d.hash; vTamper = false; proofView(); verify(); } },
+    el("span", { class: "t", text: `${day(d.barTime)}, ${hhmm(d.barTime)}` }), el("span", { text: d.asset }),
+    el("span", { class: "out " + d.action.toLowerCase(), text: outWord(d) }), el("span", { class: "n", text: `No. ${d.anchor.seq}, ${netName(d.anchor.network)}` }))))
+    : [el("li", { class: "pf-empty", text: "No decision has been anchored yet. Start the paper agent with the testnet contract configured." })]));
+  if (!$("#vrun").dataset.hash || $("#vrun").dataset.hash !== vSel + vTamper) verify();
+
+  // contracts
+  const who = { testnet: ["Paper agent", "simulated money, NEAR testnet"], mainnet: ["Live agent", "real money, NEAR mainnet"] };
+  $("#contracts").replaceChildren(...(g.length ? g.map((c) => {
+    const [title, sub] = who[c.network] || [c.network, ""];
+    const p = c.policy;
+    return el("div", { class: "ct" },
+      el("h3", { text: title }), el("p", { class: "lede", style: "margin:0", text: sub }),
+      el("a", { class: "acct", href: nearblocks(c.network, "address", c.contract), target: "_blank", rel: "noopener noreferrer", text: c.contract }),
+      c.error ? el("p", { class: "warn", text: `Could not read the contract: ${c.error}` }) :
+      el("dl", { class: "facts" },
+        el("dt", { text: "Status" }), el("dd", {}, p ? el("span", { class: "pill " + (p.paused ? "off" : "on"), text: p.paused ? "Paused" : "Active" }) : "—"),
+        el("dt", { text: "New positions today" }), el("dd", { text: p ? `${c.dayUsage?.trades ?? 0} of ${p.max_trades_per_day} allowed` : "—" }),
+        el("dt", { text: "Decisions recorded" }), el("dd", { text: c.decisionCount !== undefined ? c.decisionCount.toLocaleString("en-US") : "—" }),
+        el("dt", { text: "Agent" }), el("dd", {}, el("a", { href: nearblocks(c.network, "address", c.agent), target: "_blank", rel: "noopener noreferrer", text: c.agent })),
+        el("dt", { text: "Owner" }), el("dd", { text: p ? (p.owner.length > 40 ? `${p.owner.slice(0, 10)}…${p.owner.slice(-6)}` : p.owner) : "—" })));
+  }) : [el("div", { class: "ct" }, el("p", { class: "pf-empty", text: "No guardrail contract is configured in .env." }))]));
+
+  // swaps
+  $("#sw-sub").textContent = swaps.length ? `${swaps.length} settled` : "";
+  $("#swaps").replaceChildren(...(swaps.length ? swaps.map((x) => el("tr", {},
+    el("td", { class: "t", text: dt(x.at) }),
+    el("td", { text: `${x.amountIn.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${x.assetIn} for ${x.amountOut.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${x.assetOut}` }),
+    el("td", { class: "t", text: usd(x.price) }),
+    el("td", { class: "t", text: x.settledMs ? `${Math.round(x.settledMs / 1000)} s` : "—" }),
+    el("td", {}, x.tx ? el("a", { href: nearblocks("mainnet", "txns", x.tx), target: "_blank", rel: "noopener noreferrer", text: `${x.tx.slice(0, 10)}…` }) : el("span", { class: "t", text: x.status }))))
+    : [el("tr", {}, el("td", { colspan: "5", class: "t", text: "No recorded swap." }))]));
+
+  // LLM review
+  const L = PROOF && PROOF.llm;
+  $("#llm-sub").textContent = L ? `${L.model}, ${new Date(L.recordedAt).toISOString().slice(0, 10)}` : "";
+  $("#llm").replaceChildren(...(L ? [
+    el("div", { class: "say" },
+      el("div", { class: "verd", text: L.verdict === "reduce" ? `Reduce the size to ×${L.sizeMultiplier}` : L.verdict === "refuse" ? "Refuse the trade" : "Keep the size" }),
+      el("blockquote", { text: L.rationale })),
+    el("ol", { class: "checks" }, ...L.checks.map((c) => el("li", { class: "chk " + (c.ok ? "ok" : "no") }, el("b", { text: c.label }), el("p", { text: c.detail }))),
+      el("li", { class: "chk" }, el("b", { text: "Not re-checked here: the hardware quotes" }), el("p", { text: "The Intel TDX and NVIDIA reports behind the TEE keys are trusted as NEAR AI Cloud serves them." })))]
+    : [el("p", { class: "pf-empty", text: PROOF ? "No recorded review in this checkout." : "Loading…" })]));
+}
+
+async function verify() {
+  const box = $("#vrun");
+  const d = S && S.decisions.find((x) => x.hash === vSel);
+  box.dataset.hash = vSel + vTamper;
+  if (!d) { box.replaceChildren(el("p", { class: "pf-empty", text: "Nothing to check yet." })); return; }
+  const run = ++vRun;
+  const steps = [
+    ["Downloaded the record", "Fetching records/" + d.hash.slice(0, 12) + "….json"],
+    ["Its fingerprint matches its name", "Computing SHA-256 in your browser"],
+    ["It is in canonical form", "Re-serialising with RFC 8785"],
+    ["The fingerprint was on chain before anything happened", "Looking it up"],
+    ["Replay the decision itself", "Recomputes it from its recorded inputs with the agent's code; it must land on the same bytes."],
+  ];
+  const items = steps.map(([b, p]) => el("li", { class: "chk" }, el("b", { text: b }), el("p", { text: p })));
+  const toggle = el("button", { type: "button", "aria-pressed": String(vTamper), onclick: () => { vTamper = !vTamper; verify(); } }, vTamper ? "Undo the change" : "Change one digit");
+  box.replaceChildren(
+    el("div", { class: "v-title" }, el("h3", { text: `${d.asset}, ${day(d.barTime)} ${hhmm(d.barTime)} UTC: ${outWord(d)}` }), el("div", { class: "tools" }, toggle)),
+    el("ol", { class: "checks" }, ...items));
+  const set = (i, cls, text, extra) => { if (run !== vRun) return; items[i].className = "chk " + cls; items[i].querySelector("p").textContent = text; if (extra) items[i].append(extra); };
+  items.slice(0, 4).forEach((n) => n.classList.add("wait"));
+
+  let bytes;
+  try { const r = await fetch(`/api/record/${d.hash}`, { cache: "no-store" }); if (!r.ok) throw new Error(`HTTP ${r.status}`); bytes = new Uint8Array(await r.arrayBuffer()); }
+  catch (e) { set(0, "no", `Could not download it: ${e.message}`); return; }
+  let text = new TextDecoder().decode(bytes), note = null;
+  if (vTamper) {
+    const m = /"equityUsd":(\d)/.exec(text);
+    const at = m ? m.index + m[0].length - 1 : text.search(/\d/);
+    const was = text[at], now = String((Number(was) + 1) % 10);
+    text = text.slice(0, at) + now + text.slice(at + 1);
+    bytes = new TextEncoder().encode(text);
+    note = el("p", { class: "tamper", text: `Your browser's copy was edited: one digit of ${m ? "the portfolio value" : "the record"} changed from ${was} to ${now}. The file on disk is untouched.` });
+  }
+  await pause(250);
+  set(0, "ok", `${bytes.length.toLocaleString("en-US")} bytes, ${vTamper ? "then edited in your browser" : "exactly as the agent wrote them"}.`, note);
+
+  if (!crypto.subtle) { set(1, "no", "This browser cannot compute SHA-256 here (it needs http://127.0.0.1)."); return; }
+  const got = hex(await crypto.subtle.digest("SHA-256", bytes));
+  await pause(450);
+  const match = got === d.hash;
+  const line = (label, h, cmp) => el("div", {}, el("span", { text: label }), el("code", {}, ...[...h].map((c, i) => el("i", { class: cmp ? (c === cmp[i] ? "m" : "x") : "", style: "font-style:normal", text: c }))));
+  set(1, match ? "ok" : "no", match ? "Every one of the 64 characters is the same. Change any byte of the record and this breaks." : "The record no longer matches its name: even one digit changes the whole fingerprint.",
+    el("div", { class: "hex" }, line("File name", d.hash), line("Computed", got, d.hash)));
+
+  let canonical = false;
+  try { canonical = canon(JSON.parse(text)) === text; } catch {}
+  await pause(350);
+  set(2, canonical ? "ok" : "no", canonical ? "Re-serialised byte for byte identical: there is only one way to write this record, so it cannot be reformatted into a different fingerprint." : "The bytes are not in canonical form.");
+
+  await pause(350);
+  const a = d.anchor;
+  if (!a) set(3, "no", "This record was never written on chain.");
+  else if (!match) set(3, "no", `The chain holds ${d.hash.slice(0, 12)}…, not the edited record's ${got.slice(0, 12)}…: an edit after the fact cannot be hidden.`);
+  else set(3, "ok", `Decision No. ${a.seq} in ${a.contract} on NEAR ${netName(a.network)}, written ${dt(a.at)} UTC, ${Math.max(0, Math.round((a.at - (d.barTime + 3_600_000)) / 1000))} s after the bar closed.`,
+    el("p", {}, el("a", { href: nearblocks(a.network, "address", a.contract), target: "_blank", rel: "noopener noreferrer", text: "See the contract's transactions on NearBlocks" })));
+
+  await pause(250);
+  if (run !== vRun) return;
+  items[4].className = "chk";
+  items[4].append(el("div", { class: "cmd" }, el("code", { text: `pnpm verify ${d.hash.slice(0, 12)}` }), copyBtn(`corepack pnpm verify ${d.hash}`)));
+}
 
 // ---------- portfolio
 const PF_COL = { USDC: "#8597a0", NEAR: "#00ec97", BTC: "#f7931a" };
