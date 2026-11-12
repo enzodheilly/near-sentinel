@@ -91,4 +91,34 @@ describe("anchoring", () => {
     await expect(a.record("cd".repeat(32), "TRADE")).rejects.toBeInstanceOf(AnchorError);
     expect(await a.lookup("h")).toMatchObject({ seq: 7 });
   });
+
+  it("an exit is anchored as EXIT; an old contract without EXIT gets it as TRADE, with a warning, once", async () => {
+    const sent: string[] = [];
+    const warnings: string[] = [];
+    const near: NearLike = {
+      call: async <T>(_c: string, m: string, a: object) => {
+        if (m === "pause") return undefined as T;
+        const k = (a as { kind: string }).kind;
+        sent.push(k);
+        if (k === "EXIT") throw new Error("Smart contract panicked: Failed to deserialize input from JSON.: Error(\"unknown variant `EXIT`, expected one of `TRADE`, `REJECT`, `HOLD`\")");
+        return sent.length as T;
+      },
+      view: async <T>() => null as T,
+    };
+    const a = new ContractAnchor({ near, contractId: "old.near", agentId: "agent.near", warn: (m) => warnings.push(m) });
+    await a.record("ab".repeat(32), "EXIT");
+    await a.record("cd".repeat(32), "EXIT");
+    expect(sent).toEqual(["EXIT", "TRADE", "TRADE"]); // tried once, then straight to TRADE
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/predates EXIT/);
+    await a.pause();
+  });
+
+  it("the recorder anchors exit trades as EXIT and entries as TRADE", async () => {
+    const { anchorKind } = await import("../../src/decision/record.ts");
+    const exit = { kind: "EXIT", asset: "NEAR", barTime: 0, reason: "STOP", referencePrice: 1, quantity: 1, fraction: 1 } as const;
+    expect(anchorKind({ action: "TRADE", proposal: exit } as never)).toBe("EXIT");
+    expect(anchorKind({ action: "TRADE", proposal: { kind: "ENTRY" } } as never)).toBe("TRADE");
+    expect(anchorKind({ action: "HOLD", reason: "NO_SIGNAL" } as never)).toBe("HOLD");
+  });
 });

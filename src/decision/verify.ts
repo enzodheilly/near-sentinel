@@ -20,7 +20,7 @@ import { evaluateEntry, exitPlan, marketFacts, quoteChecked, type Decision, type
 import { watchExit } from "./exits.ts";
 import { applyKillSwitch, entryGate } from "./limits.ts";
 import { recheckReview } from "./llm/attestation.ts";
-import { buildRecord, hashRecord } from "./record.ts";
+import { anchorKind, buildRecord, hashRecord } from "./record.ts";
 
 export interface VerifyContext {
   /** Risk configurations by configHash. */
@@ -116,7 +116,8 @@ export async function verifyRecord(rec: DecisionRecord, ctx: VerifyContext): Pro
       problems.push(`anchor: lookup failed (${e instanceof Error ? e.message : String(e)})`);
     }
     if (entry === null && !problems.some((x) => x.startsWith("anchor:"))) problems.push("anchor: this hash is not recorded in the guardrail contract");
-    else if (entry && entry.kind !== rec.outcome.action) problems.push(`anchor: recorded on chain as ${entry.kind}, the record says ${rec.outcome.action}`);
+    else if (entry && entry.kind === "TRADE" && anchorKind(rec.outcome) === "EXIT") notes.push(`anchor: on chain as decision #${entry.seq}, an exit anchored as TRADE (contract deployed before EXIT existed), at ${new Date(entry.recorded_at_ms).toISOString()}`);
+    else if (entry && entry.kind !== anchorKind(rec.outcome)) problems.push(`anchor: recorded on chain as ${entry.kind}, the record says ${anchorKind(rec.outcome)}`);
     else if (entry) notes.push(`anchor: on chain as decision #${entry.seq}, ${entry.kind}, at ${new Date(entry.recorded_at_ms).toISOString()}`);
   }
   if (rec.llm) {

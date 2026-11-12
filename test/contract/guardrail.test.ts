@@ -32,6 +32,7 @@ describe.skipIf(!sandboxEnabled)("guardrail contract (sandbox)", { timeout: 60_0
     await g.call(g.agent, "record_decision", { hash: h("trade-2"), kind: "TRADE" });
     await expect(g.call(g.agent, "record_decision", { hash: h("trade-3"), kind: "TRADE" })).rejects.toThrow(/max_trades_per_day/);
     await g.call(g.agent, "record_decision", { hash: h("reject-1"), kind: "REJECT" });
+    await g.call(g.agent, "record_decision", { hash: h("exit-1"), kind: "EXIT" }); // exits pass the cap, uncounted
     expect(await g.view("get_day_usage")).toMatchObject({ trades: 2 });
   });
 
@@ -70,6 +71,8 @@ describe.skipIf(!sandboxEnabled)("anchoring against the deployed contract (sandb
     await g.call(g.owner, "pause");
     await expect(a.record(h("while-paused"), "TRADE")).rejects.toBeInstanceOf(AnchorError);
     expect(await a.record(h("refusal-while-paused"), "REJECT")).toBe(2);
+    expect(await a.record(h("stop-while-paused"), "EXIT")).toBe(3); // a stop is never blocked
+    expect(await a.lookup(h("stop-while-paused"))).toMatchObject({ kind: "EXIT" });
   });
 });
 

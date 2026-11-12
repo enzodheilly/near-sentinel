@@ -165,8 +165,8 @@ describe("Runner: a step that stops half-way", () => {
     let armed = false, sawTrade = false;
     const failing = {
       record: async (h: string, k: AnchorKind) => {
-        if (armed && k === "TRADE") sawTrade = true;
-        if (armed && sawTrade && k !== "TRADE") throw new Error("rpc timeout");
+        if (armed && k === "EXIT") sawTrade = true;
+        if (armed && sawTrade && k !== "EXIT") throw new Error("rpc timeout");
         return anchor.record(h, k);
       },
       lookup: (h: string) => anchor.lookup(h),
@@ -175,7 +175,7 @@ describe("Runner: a step that stops half-way", () => {
     const runner = await Runner.open({ ...opts, anchor: failing });
     await runner.tick();
     expect(runner.state.portfolio.positions.map((p) => p.asset)).toEqual(["NEAR"]);
-    armed = true; // from now on, the first record after an exit's TRADE fails to anchor
+    armed = true; // from now on, the first record after an exit fails to anchor
     for (let i = 0; i < 40 && !sawTrade; i++) {
       vi.setSystemTime(Date.now() + H);
       await runner.tick();
