@@ -989,7 +989,9 @@ function proofView() {
   $("#picks").replaceChildren(...(anchored.length ? anchored.map((d) => el("li", {}, el("button", { type: "button", "aria-current": String(d.hash === vSel), onclick: () => { vSel = d.hash; vTamper = false; proofView(); verify(); } },
     el("span", { class: "t", text: `${day(d.barTime)}, ${hhmm(d.barTime)}` }), el("span", { text: d.asset }),
     el("span", { class: "out " + d.action.toLowerCase(), text: outWord(d) }), el("span", { class: "n", text: `No. ${d.anchor.seq}, ${netName(d.anchor.network)}` }))))
-    : [el("li", { class: "pf-empty", text: "No decision has been anchored yet. Start the paper agent with the testnet contract configured." })]));
+    : [el("li", { class: "pf-empty", text: S.guardrails.some((g) => g.error)
+        ? "NEAR could not be reached from this machine, so the decisions cannot be looked up on chain right now. Check the network access, then reload."
+        : "No decision has been anchored yet. Start the paper agent with the testnet contract configured." })]));
   if (!$("#vrun").dataset.hash || $("#vrun").dataset.hash !== vSel + vTamper) verify();
 
   // contracts

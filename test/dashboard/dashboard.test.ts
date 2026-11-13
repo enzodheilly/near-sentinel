@@ -209,6 +209,29 @@ describe("proof tab", () => {
     }
   });
 
+  it("an unreachable chain is asked once, reported, and never cached as 'not anchored'", async () => {
+    const root = await fixture();
+    let fail = true;
+    const calls: string[] = [];
+    const flaky: ChainReader = {
+      view: async <T,>(net: string, _c: string, m: string) => {
+        calls.push(`${net}:${m}`);
+        if (fail) throw new Error("unreachable");
+        return (m === "get_decision" ? { seq: 7, recorded_at_ms: NOW } : undefined) as T;
+      },
+    };
+    const anchorCache = new Map();
+    const only = { NEAR_NETWORK: "testnet", NEAR_GUARDRAIL_CONTRACT: "guardrail.x.testnet" };
+    const off = await buildDashboardState({ root, env: only, chain: flaky, now: NOW, anchorCache });
+    expect(off.guardrails[0]!.error).toBe("unreachable");
+    expect(calls.filter((c) => c.endsWith("get_decision"))).toEqual([]); // the network already failed: no lookup at all
+    expect(off.decisions.every((d) => d.anchor === undefined)).toBe(true);
+    fail = false;
+    const on = await buildDashboardState({ root, env: only, chain: flaky, now: NOW, anchorCache });
+    expect(on.decisions.length).toBeGreaterThan(0);
+    expect(on.decisions.every((d) => d.anchor?.seq === 7)).toBe(true);
+  });
+
   it("re-checks the recorded LLM exchange from its bytes", async () => {
     const root = new URL("../../", import.meta.url).pathname;
     const p = await buildProof(root);

@@ -28,7 +28,13 @@ export function nearKitReader(): ChainReader {
     if (!clients.has(network)) clients.set(network, import("near-kit").then(({ Near }) => new Near({ network }) as never));
     return clients.get(network)!;
   };
-  return { view: async (network, contract, method, args) => (await get(network)).view(contract, method, args) };
+  // a blocked or offline network must not hang the page: give each view a few seconds, then report it as an error
+  const within = <T,>(p: Promise<T>, ms: number) =>
+    new Promise<T>((ok, ko) => {
+      const t = setTimeout(() => ko(new Error("NEAR RPC did not answer in time")), ms);
+      p.then((v) => (clearTimeout(t), ok(v)), (e: unknown) => (clearTimeout(t), ko(e)));
+    });
+  return { view: async (network, contract, method, args) => within((async () => (await get(network)).view(contract, method, args))(), 6000) };
 }
 
 const require_ = createRequire(import.meta.url);
