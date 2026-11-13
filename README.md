@@ -6,6 +6,20 @@ Built at NEAR HACKATHON, 1 to 14 November 2026.
 
 ![The live dashboard: the latest decision, where it stopped, and how far the week's decisions got](docs/dashboard.png)
 
+## Check it in a minute
+
+Nothing here asks you to take our word for it.
+
+- **In a browser, no install.** Open the testnet guardrail on [NearBlocks](https://testnet.nearblocks.io/address/guardrail.near-sentinel-enzo.testnet): each `record_decision` call is one hourly decision, written before the agent was allowed to act. The two real swaps are on mainnet: [USDC to NEAR](https://nearblocks.io/txns/BZw8CY6j9sZU2ymZzT1tzw3NUofuV1KiLm5j8k3xNNkj) and [back](https://nearblocks.io/txns/DCws6QWLcUUmuwEqiaVrehkU1VEC7DLEjeZRhQXxbHtz).
+- **In a terminal, two commands.** `corepack pnpm install && corepack pnpm demo` replays a trade and a refusal offline, with no key. `corepack pnpm verify <hash>` then recomputes any decision and must land on the same bytes.
+- **Try to cheat.** `corepack pnpm dashboard` opens a local page whose Proof tab re-hashes any anchored record in your browser. Press "Change one digit": the fingerprint no longer matches the one on chain, and the page says so.
+
+## Why it mostly holds, and why that is the point
+
+In the week shown above, the paper agent took 218 decisions and stopped 217 of them at the first step: no breakout, no trade. A bot that only shows its wins could hide those hours. Sentinel records and anchors each one exactly like a trade, so its track record cannot be cherry-picked, including by us.
+
+What is submitted is the trust layer, not a money machine: evidence before execution, limits the agent cannot lift, and an LLM that can only reduce risk. The strategy is deliberately plain so that every refusal can be explained and replayed. To see the agent act, the offline demo replays one confirmed breakout (entry, two targets) and one refused setup.
+
 ## The problem
 
 A trading bot usually asks you to trust whoever runs it: that it follows its own rules, that it did not cherry-pick its track record, and that it stays within its limits. Sentinel makes those claims checkable:
