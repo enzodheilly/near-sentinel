@@ -204,6 +204,10 @@ export interface BuildOptions {
   readonly limit?: number;
   /** Anchor lookups already done (hash → result), to avoid asking the chain every refresh. */
   readonly anchorCache?: Map<string, DecisionView["anchor"]>;
+  /** Where the records are, when not <root>/records (the committed sample set). */
+  readonly records?: string;
+  /** How far back decisions are shown. Seven days by default; the sample set is dated, so it shows them all. */
+  readonly windowMs?: number;
 }
 
 export async function buildDashboardState(o: BuildOptions): Promise<DashboardState> {
@@ -251,7 +255,7 @@ export async function buildDashboardState(o: BuildOptions): Promise<DashboardSta
   const prices = hbs[0]?.prices ? { ...hbs[0].prices, at: hbs[0].at } : undefined;
 
   // the agent's own recent decisions (demo replays in the same folder decide on old bars: left out)
-  const recs = (await recentRecords(join(o.root, "records"), (o.limit ?? 40) * 3)).filter((r) => now - r.rec.inputs.now <= 7 * 86_400_000).slice(0, o.limit ?? 40);
+  const recs = (await recentRecords((o.records ?? join(o.root, "records")), (o.limit ?? 40) * 3)).filter((r) => now - r.rec.inputs.now <= (o.windowMs ?? 7 * 86_400_000)).slice(0, o.limit ?? 40);
   const cache = o.anchorCache ?? new Map();
   const decisions: DecisionView[] = [];
   for (const { hash, rec } of recs) {
@@ -281,7 +285,7 @@ export async function buildDashboardState(o: BuildOptions): Promise<DashboardSta
   }
   decisions.sort((a, b) => b.at - a.at);
 
-  const latest = recs.filter((r) => now - r.rec.inputs.now <= 7 * 86_400_000).sort((a, b) => b.rec.inputs.now - a.rec.inputs.now || (a.rec.asset === "NEAR" ? -1 : 1))[0];
+  const latest = recs.filter((r) => now - r.rec.inputs.now <= (o.windowMs ?? 7 * 86_400_000)).sort((a, b) => b.rec.inputs.now - a.rec.inputs.now || (a.rec.asset === "NEAR" ? -1 : 1))[0];
   let scan: ScanView | undefined;
   if (latest) {
     const r = latest.rec;
@@ -305,7 +309,7 @@ export async function buildDashboardState(o: BuildOptions): Promise<DashboardSta
   };
   const swaps = await readSwaps(join(o.root, "test", "live", "recorded"));
   // the funnel counts every decision of the last 7 days (two assets, hourly: about 340), not just the log's 40
-  const week = (await recentRecords(join(o.root, "records"), 1000)).filter((r) => now - r.rec.inputs.now <= 7 * 86_400_000);
+  const week = (await recentRecords((o.records ?? join(o.root, "records")), 1000)).filter((r) => now - r.rec.inputs.now <= (o.windowMs ?? 7 * 86_400_000));
   const stopped = { breakout: 0, confirm: 0, risk: 0, llm: 0, policy: 0 };
   const reasons: Record<string, number> = {};
   let trades = 0;

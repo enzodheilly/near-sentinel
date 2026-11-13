@@ -54,6 +54,9 @@ export interface DashboardServerOptions {
   readonly chain?: ChainReader;
   readonly clock?: () => number;
   readonly cacheMs?: number;
+  /** Records directory and time window, when not the defaults (see BuildOptions). */
+  readonly records?: string;
+  readonly windowMs?: number;
   /** Chart candles (Hyperliquid NEAR perp by default; tests inject a fake). */
   readonly candles?: (interval: ChartInterval) => Promise<ChartCandle[]>;
 }
@@ -69,7 +72,7 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
   const state = async (): Promise<string> => {
     const now = clock();
     if (cached && now - cached.at < (o.cacheMs ?? 10_000)) return cached.body;
-    building ??= buildDashboardState({ root: o.root, env: o.env, ...(o.chain ? { chain: o.chain } : {}), now, anchorCache })
+    building ??= buildDashboardState({ root: o.root, env: o.env, ...(o.chain ? { chain: o.chain } : {}), now, anchorCache, ...(o.records ? { records: o.records } : {}), ...(o.windowMs !== undefined ? { windowMs: o.windowMs } : {}) })
       .then((s: DashboardState) => {
         const body = JSON.stringify(s, (_k, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
         cached = { at: now, body };
@@ -147,7 +150,7 @@ export async function startDashboard(o: DashboardServerOptions): Promise<{ serve
         return;
       }
       // the exact bytes on disk, untouched: the point is that the browser hashes what the agent wrote
-      readFile(join(o.root, "records", `${hash}.json`)).then(
+      readFile(join(o.records ?? join(o.root, "records"), `${hash}.json`)).then(
         (buf) => res.writeHead(200, { ...headers, "content-type": "application/json", "cache-control": "no-store" }).end(buf),
         () => res.writeHead(404, headers).end("no such record"),
       );
