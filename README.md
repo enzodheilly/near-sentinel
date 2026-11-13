@@ -11,7 +11,7 @@ Built at NEAR HACKATHON, 1 to 14 November 2026.
 Nothing here asks you to take our word for it.
 
 - **In a browser, no install.** Open the testnet guardrail on [NearBlocks](https://testnet.nearblocks.io/address/guardrail.near-sentinel-enzo.testnet): each `record_decision` call is one hourly decision, written before the agent was allowed to act. The two real swaps are on mainnet: [USDC to NEAR](https://nearblocks.io/txns/BZw8CY6j9sZU2ymZzT1tzw3NUofuV1KiLm5j8k3xNNkj) and [back](https://nearblocks.io/txns/DCws6QWLcUUmuwEqiaVrehkU1VEC7DLEjeZRhQXxbHtz).
-- **In a terminal, two commands.** `corepack pnpm install && corepack pnpm demo` replays a trade and a refusal offline, with no key. `corepack pnpm verify <hash>` then recomputes any decision and must land on the same bytes.
+- **In a terminal, two commands.** `corepack pnpm install && corepack pnpm demo` replays a trade and a refusal offline, with no key. `corepack pnpm verify --all` then recomputes every decision and must land on the same bytes.
 - **Try to cheat.** `corepack pnpm dashboard` opens a local page whose Proof tab re-hashes any anchored record in your browser. Press "Change one digit": the fingerprint no longer matches the one on chain, and the page says so.
 
 ## Why it mostly holds, and why that is the point
@@ -45,11 +45,14 @@ You will see two frozen market scenarios replayed bar by bar:
 - `demo-entry`: the agent buys NEAR on a confirmed breakout, takes half profit at target 1 and the rest at target 2 (+$7.44 on $1,000).
 - `demo-refusal`: the same kind of breakout, but RSI is at 82.5, so the agent refuses. NEAR fell 4.7% over the next 24 hours.
 
-Each line ends with a record hash. Then check one:
+Each line ends with a record hash. Then check them all, or just one:
 
 ```bash
-corepack pnpm verify e8c8b087      # any hash or prefix printed by the demo
+corepack pnpm verify --all         # recomputes every record the demo wrote
+corepack pnpm verify <hash>        # one record: paste any hash, or its first 8 characters, from the demo output
 ```
+
+The hashes change with each version of the code, because every record names the exact commit that produced it. That is why no hash is printed here.
 
 `verify` confirms that the file hashes to its name, that the configuration is known, that the candles match the market data byte for byte, and that recomputing the decision with the same code gives the same record. Add `--anchor <contract> --network testnet|mainnet` to also check that the hash is on chain.
 
