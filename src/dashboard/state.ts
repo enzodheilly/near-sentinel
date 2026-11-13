@@ -258,19 +258,35 @@ export async function buildDashboardState(o: BuildOptions): Promise<DashboardSta
   const recs = (await recentRecords((o.records ?? join(o.root, "records")), (o.limit ?? 40) * 3)).filter((r) => now - r.rec.inputs.now <= (o.windowMs ?? 7 * 86_400_000)).slice(0, o.limit ?? 40);
   const cache = o.anchorCache ?? new Map();
   const decisions: DecisionView[] = [];
+  // a network that failed (just now on the guardrail views, or on a lookup below) is not asked again in this
+  // refresh, and what it could not answer is left unknown instead of being cached as "not anchored"
+  const down = new Set<string>(guardrails.filter((g) => g.error).map((g) => g.network));
   for (const { hash, rec } of recs) {
     let anchor = cache.get(hash);
     if (anchor === undefined && o.chain && guardrailCfg.length) {
-      anchor = null;
+      let unknown = false;
+      let found: DecisionView["anchor"] = null;
       for (const g of guardrailCfg) {
+        if (down.has(g.network)) {
+          unknown = true;
+          continue;
+        }
         const contract = e[`${g.prefix}NEAR_GUARDRAIL_CONTRACT`]!;
-        const a = await o.chain.view<{ seq: number; recorded_at_ms: number }>(g.network, contract, "get_decision", { hash }).catch(() => undefined);
-        if (a) {
-          anchor = { network: g.network, contract, seq: a.seq, at: a.recorded_at_ms };
-          break;
+        try {
+          const a = await o.chain.view<{ seq: number; recorded_at_ms: number }>(g.network, contract, "get_decision", { hash });
+          if (a) {
+            found = { network: g.network, contract, seq: a.seq, at: a.recorded_at_ms };
+            break;
+          }
+        } catch {
+          down.add(g.network);
+          unknown = true;
         }
       }
-      cache.set(hash, anchor);
+      if (found || !unknown) {
+        anchor = found;
+        cache.set(hash, anchor);
+      }
     }
     const o2 = rec.outcome;
     decisions.push({
