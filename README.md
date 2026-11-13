@@ -12,7 +12,7 @@ Nothing here asks you to take our word for it.
 
 - **In a browser, no install.** Open the testnet guardrail on [NearBlocks](https://testnet.nearblocks.io/address/guardrail.near-sentinel-enzo.testnet): each `record_decision` call is one hourly decision, written before the agent was allowed to act. The two real swaps are on mainnet: [USDC to NEAR](https://nearblocks.io/txns/BZw8CY6j9sZU2ymZzT1tzw3NUofuV1KiLm5j8k3xNNkj) and [back](https://nearblocks.io/txns/DCws6QWLcUUmuwEqiaVrehkU1VEC7DLEjeZRhQXxbHtz).
 - **In a terminal, two commands.** `corepack pnpm install && corepack pnpm demo` replays a trade and a refusal offline, with no key. `corepack pnpm verify --all` then recomputes every decision and must land on the same bytes.
-- **Try to cheat.** `corepack pnpm dashboard` opens a local page whose Proof tab re-hashes any anchored record in your browser. Press "Change one digit": the fingerprint no longer matches the one on chain, and the page says so.
+- **Try to cheat.** `corepack pnpm dashboard --sample` opens a local page on http://127.0.0.1:4747. In its Proof tab, pick a decision: your browser downloads the record, hashes it, and looks the hash up on the testnet contract. Then press "Change one digit": the fingerprint no longer matches the one on chain, and the page says so. The sample is 40 real records from the paper agent, committed in `samples/anchored/`.
 
 ## Why it mostly holds, and why that is the point
 
@@ -131,6 +131,7 @@ Copy `.env.example` to `.env` and fill in only what each mode needs. Keys stay i
 | `pnpm demo`, `pnpm verify <hash>`, `pnpm explorer` | Offline replay, verification, and the decision explorer | Nothing |
 | `pnpm paper` | Runs on the real market with simulated money until Ctrl+C. One decision per asset at each 1h close, and stops watched every 60 s. | `ONECLICK_JWT` recommended; `NEARAI_API_KEY` for the LLM review |
 | `pnpm dashboard` | Local, read-only live page on http://127.0.0.1:4747. Its Proof tab re-hashes any anchored record in your browser and shows the contracts, swaps and signed LLM review behind each claim. | Nothing (reads `state/`, `records/` and the chain) |
+| `pnpm dashboard --sample` | The same page on the 40 committed records the paper agent anchored on testnet, so the Proof tab works on a fresh clone | Nothing (reads `samples/anchored/` and the testnet contract) |
 | `pnpm status paper` | The paper portfolio and heartbeat in the terminal | Nothing |
 | `pnpm live --yes-real-funds` | The same loop with real swaps inside NEAR Intents | The mainnet guardrail and a live key, set up below |
 
@@ -169,6 +170,7 @@ src/explorer/     the offline decision explorer
 contracts/guardrail/   the NEAR contract (Rust) and its committed wasm
 scripts/          one-time setup run by the owner (deploy, keys, funding, one swap)
 fixtures/         frozen market data for the demo and the tests
+samples/          40 real records anchored on testnet, for `pnpm dashboard --sample`
 test/             unit, property, golden, sandbox-contract and recorded live tests
 ```
 

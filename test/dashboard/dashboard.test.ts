@@ -189,6 +189,26 @@ describe("proof tab", () => {
     }
   });
 
+  it("sample mode: the committed anchored records are listed and served, however old they are", async () => {
+    const root = await fixture();
+    const records = join(import.meta.dirname, "..", "..", "samples", "anchored");
+    const names = (await readdir(records)).filter((f) => /^[0-9a-f]{64}\.json$/.test(f));
+    expect(names.length).toBe(40);
+    const anchored: ChainReader = { view: async <T,>(_n: string, _c: string, m: string) => (m === "get_decision" ? ({ seq: 1, recorded_at_ms: NOW } as T) : undefined) };
+    const later = Date.parse("2027-01-01T00:00:00Z");
+    const { server, url } = await startDashboard({ root, env, chain: anchored, port: 0, clock: () => later, records, windowMs: Number.POSITIVE_INFINITY });
+    try {
+      const state = (await (await fetch(`${url}/api/state`)).json()) as { decisions: { hash: string; anchor?: unknown }[] };
+      expect(state.decisions.length).toBe(40);
+      expect(state.decisions.every((d) => d.anchor)).toBe(true);
+      const r = await fetch(`${url}/api/record/${state.decisions[0]!.hash}`);
+      expect(Buffer.from(await r.arrayBuffer()).equals(await readFile(join(records, `${state.decisions[0]!.hash}.json`)))).toBe(true);
+      expect((await fetch(`${url}/api/record/${"a".repeat(64)}`)).status).toBe(404); // the fixture's own records are not served
+    } finally {
+      server.close();
+    }
+  });
+
   it("re-checks the recorded LLM exchange from its bytes", async () => {
     const root = new URL("../../", import.meta.url).pathname;
     const p = await buildProof(root);

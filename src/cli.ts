@@ -7,7 +7,8 @@
  *   status                    positions, limits and today's PnL from the last recorded state
  *   explorer                  build explorer/dist/index.html from the records
  *   paper                     run on the live market with dry quotes and simulated fills, until Ctrl+C
- *   dashboard [--port 4747]   local read-only live view of the agent (http://127.0.0.1:4747)
+ *   dashboard [--port 4747] [--sample]   local read-only live view of the agent (http://127.0.0.1:4747);
+ *                             --sample shows the committed anchored records instead of your own
  *   live --yes-real-funds     real swaps inside NEAR Intents, each decision anchored first, capped per trade
  */
 
@@ -22,6 +23,8 @@ import { runExplorer } from "./explorer/build.ts";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const write = (l: string) => process.stdout.write(`${l}\n`);
 const [cmd, ...argv] = process.argv.slice(2);
+/** The testnet guardrail that anchored the records in samples/anchored. */
+const SAMPLE_GUARDRAIL = "guardrail.near-sentinel-enzo.testnet";
 const VALUED = new Set(["--records", "--anchor", "--network", "--port"]); // flags followed by a value
 const flag = (name: string, fallback: string) => {
   const i = argv.indexOf(`--${name}`);
@@ -76,8 +79,19 @@ async function main(): Promise<number> {
       loadEnv();
       const { startDashboard, nearKitReader } = await import("./dashboard/server.ts");
       const i = argv.indexOf("--port");
-      const { url } = await startDashboard({ root, env: process.env, chain: nearKitReader(), ...(i >= 0 ? { port: Number(argv[i + 1]) } : {}) });
+      // --sample: the committed records the paper agent anchored on testnet, checked against that public contract,
+      // so the Proof tab works on a fresh clone with no key and no agent running
+      const sample = argv.includes("--sample");
+      const env = sample ? { ...process.env, NEAR_NETWORK: "testnet", NEAR_GUARDRAIL_CONTRACT: SAMPLE_GUARDRAIL } : process.env;
+      const { url } = await startDashboard({
+        root,
+        env,
+        chain: nearKitReader(),
+        ...(i >= 0 ? { port: Number(argv[i + 1]) } : {}),
+        ...(sample ? { records: join(root, "samples", "anchored"), windowMs: Number.POSITIVE_INFINITY } : {}),
+      });
       write(`NEAR Sentinel dashboard (read-only): ${url} · Ctrl+C to stop`);
+      if (sample) write(`sample mode: 40 recorded decisions from 11 and 12 Nov 2026, looked up on ${SAMPLE_GUARDRAIL}. No agent is running.`);
       return new Promise<number>(() => {}); // runs until Ctrl+C
     }
     case "live":
