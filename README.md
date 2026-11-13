@@ -172,6 +172,13 @@ fixtures/         frozen market data for the demo and the tests
 test/             unit, property, golden, sandbox-contract and recorded live tests
 ```
 
+## What was built during the hackathon
+
+- **Everything in this repository.** The first commit is dated 1 November 2026. There is no earlier product, no code from another chain, and no pre-hackathon library of ours.
+- **Written with an AI coding assistant** (Claude Code), directed and reviewed by a solo builder. Every change went through a pull request with CI.
+- **Third-party libraries:** `near-kit` (NEAR RPC and signing), `canonicalize` (RFC 8785 JSON), `zod` (validation), `three` (the 3D desk on the dashboard), the Chakra Petch and IBM Plex Sans fonts, and `near-sdk` 5 for the Rust contract. Tests use `vitest` and `fast-check`.
+- **External services:** the NEAR Intents 1Click API, NEAR AI Cloud, NEAR RPC, and Binance public market data.
+
 ## Licence
 
 The code is under the [MIT licence](./LICENSE).
